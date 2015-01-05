@@ -260,14 +260,28 @@ wifi_error wifi_initialize(wifi_handle *handle)
 
     *handle = (wifi_handle) info;
 
-    wifi_add_membership(*handle, "scan");
-    wifi_add_membership(*handle, "mlme");
-    wifi_add_membership(*handle, "regulatory");
-    wifi_add_membership(*handle, "vendor");
+    if (wifi_init_interfaces(*handle) != WIFI_SUCCESS) {
+        ALOGE("No wifi interface found");
+        nl_socket_free(cmd_sock);
+        nl_socket_free(event_sock);
+        pthread_mutex_destroy(&info->cb_lock);
+        free(info);
+        return WIFI_ERROR_NOT_AVAILABLE;
+    }
 
-    wifi_init_interfaces(*handle);
+    if ((wifi_add_membership(*handle, "scan") < 0) ||
+        (wifi_add_membership(*handle, "mlme")  < 0) ||
+        (wifi_add_membership(*handle, "regulatory") < 0) ||
+        (wifi_add_membership(*handle, "vendor") < 0)) {
+        ALOGE("Add membership failed");
+        nl_socket_free(cmd_sock);
+        nl_socket_free(event_sock);
+        pthread_mutex_destroy(&info->cb_lock);
+        free(info);
+        return WIFI_ERROR_NOT_AVAILABLE;
+    }
+
     // ALOGI("Found %d interfaces", info->num_interfaces);
-
 
     ALOGI("Initialized Wifi HAL Successfully; vendor cmd = %d", NL80211_CMD_VENDOR);
     return WIFI_SUCCESS;
@@ -1138,6 +1152,9 @@ wifi_error wifi_init_interfaces(wifi_handle handle)
     }
 
     closedir(d);
+
+    if (n == 0)
+        return WIFI_ERROR_NOT_AVAILABLE;
 
     d = opendir("/sys/class/net");
     if (d == 0)
