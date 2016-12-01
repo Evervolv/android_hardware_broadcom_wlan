@@ -74,6 +74,7 @@ typedef enum {
     GSCAN_ATTRIBUTE_RSSI_HIGH,
     GSCAN_ATTRIBUTE_HOTLIST_ELEM,
     GSCAN_ATTRIBUTE_HOTLIST_FLUSH,
+    GSCAN_ATTRIBUTE_HOTLIST_BSSID_COUNT,
 
     /* remaining reserved for additional attributes */
     GSCAN_ATTRIBUTE_RSSI_SAMPLE_SIZE = 60,
@@ -1012,6 +1013,11 @@ public:
         }
 
         result = request.put_u32(GSCAN_ATTRIBUTE_LOST_AP_SAMPLE_SIZE, mParams.lost_ap_sample_size);
+        if (result < 0) {
+            return result;
+        }
+
+        result = request.put_u32(GSCAN_ATTRIBUTE_HOTLIST_BSSID_COUNT, mParams.num_bssid);
         if (result < 0) {
             return result;
         }
