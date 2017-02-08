@@ -1174,6 +1174,10 @@ public:
         }
     }
     int createSetupRequest(WifiRequest& request) {
+        if (epno_params.num_networks > MAX_EPNO_NETWORKS) {
+            ALOGE("wrong epno num_networks:%d", epno_params.num_networks);
+            return WIFI_ERROR_INVALID_ARGS;
+        }
         int result = request.create(GOOGLE_OUI, GSCAN_SUBCMD_SET_EPNO_SSID);
         if (result < 0) {
             return result;
