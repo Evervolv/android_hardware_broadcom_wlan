@@ -149,6 +149,8 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_reset_significant_change_handler = wifi_reset_significant_change_handler;
     fn->wifi_get_gscan_capabilities = wifi_get_gscan_capabilities;
     fn->wifi_get_link_stats = wifi_get_link_stats;
+    fn->wifi_set_link_stats = wifi_set_link_stats;
+    fn->wifi_clear_link_stats = wifi_clear_link_stats;
     fn->wifi_get_valid_channels = wifi_get_valid_channels;
     fn->wifi_rtt_range_request = wifi_rtt_range_request;
     fn->wifi_rtt_range_cancel = wifi_rtt_range_cancel;
