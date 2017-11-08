@@ -60,8 +60,6 @@ ifeq ($(TARGET_USES_64_BIT_BCMDHD),true)
 L_CFLAGS += -DBCMDHD_64_BIT_IPC
 endif
 
-L_CFLAGS += -Wall -Werror -Wno-unused-parameter -Wno-macro-redefined
-
 ########################
 
 include $(CLEAR_VARS)
