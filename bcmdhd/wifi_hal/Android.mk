@@ -18,14 +18,7 @@ LOCAL_PATH := $(call my-dir)
 # ============================================================
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := \
-    -Wall \
-    -Werror \
-    -Wno-reorder \
-    -Wno-unused-function \
-    -Wno-unused-parameter \
-    -Wno-unused-private-field \
-    -Wno-unused-variable \
+LOCAL_CFLAGS := -Wno-unused-parameter
 
 LOCAL_C_INCLUDES += \
 	external/libnl/include \
