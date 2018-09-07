@@ -39,6 +39,9 @@
 #include <dirent.h>
 #include <net/if.h>
 
+#include <sys/types.h>
+#include <unistd.h>
+
 #include "sync.h"
 
 #define LOG_TAG  "WifiHAL"
