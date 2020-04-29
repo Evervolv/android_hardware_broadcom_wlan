@@ -129,7 +129,7 @@ typedef enum {
     WIFI_SUBCMD_SET_RSSI_MONITOR,                       /* 0x1016 */
     WIFI_SUBCMD_CONFIG_ND_OFFLOAD,                      /* 0x1017 */
     /* Add more sub commands here */
-
+    WIFI_SUBCMD_ROAM_CAPABILITY = 0x101a,               /* 0x101a*/
     GSCAN_SUBCMD_MAX,
 
     APF_SUBCMD_GET_CAPABILITIES = ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START,
