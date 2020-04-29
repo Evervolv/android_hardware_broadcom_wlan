@@ -34,6 +34,8 @@
 #define DOT11_OUI_LEN             3
 #define DOT11_MAX_SSID_LEN        32
 
+#define ETHERTYPE_IP            0x0800          /* IP */
+#define ETHERTYPE_IPV6          0x86dd          /* IP protocol version 6 */
 #define MAX_PROBE_RESP_IE_LEN      2048
 /*
  Vendor OUI - This is a unique identifier that identifies organization. Lets
