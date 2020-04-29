@@ -163,6 +163,10 @@ typedef enum {
 
 } GSCAN_ATTRIBUTE;
 
+typedef struct {
+    int num_bssid;                          // number of blacklisted BSSIDs
+    mac_addr bssids[MAX_BLACKLIST_BSSID];   // blacklisted BSSIDs
+} wifi_bssid_params;
 
 // helper methods
 wifi_error wifi_enable_full_scan_results(wifi_request_id id, wifi_interface_handle iface,
@@ -1688,7 +1692,114 @@ wifi_error wifi_set_epno_list(wifi_request_id id, wifi_interface_handle iface,
     return result;
 }
 
+class BssidBlacklistCommand : public WifiCommand
+{
+    private:
+        wifi_bssid_params *mParams;
+    public:
+        BssidBlacklistCommand(wifi_interface_handle handle, int id,
+                wifi_bssid_params *params)
+            : WifiCommand("BssidBlacklistCommand", handle, id), mParams(params)
+        { }
+        int createRequest(WifiRequest& request) {
+            if ((mParams->num_bssid < 0) || (mParams->num_bssid > MAX_BLACKLIST_BSSID)) {
+                return WIFI_ERROR_INVALID_ARGS;
+            }
+            int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_SET_BSSID_BLACKLIST);
+            if (result < 0) {
+                return result;
+            }
 
+            nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+            if (!mParams->num_bssid) {
+                result = request.put_u32(GSCAN_ATTRIBUTE_BSSID_BLACKLIST_FLUSH, 1);
+                if (result < 0) {
+                    return result;
+                }
+            } else {
+                result = request.put_u32(GSCAN_ATTRIBUTE_NUM_BSSID, mParams->num_bssid);
+                if (result < 0) {
+                    return result;
+                }
+                for (int i = 0; i < mParams->num_bssid; i++) {
+                    result = request.put_addr(GSCAN_ATTRIBUTE_BLACKLIST_BSSID, mParams->bssids[i]);
+                    if (result < 0) {
+                        return result;
+                    }
+               }
+            }
+            request.attr_end(data);
+            return result;
+        }
+
+        int start() {
+            ALOGV("Executing bssid blacklist request, num = %d", mParams->num_bssid);
+            WifiRequest request(familyId(), ifaceId());
+            int result = createRequest(request);
+            if (result < 0) {
+                return result;
+            }
+
+            result = requestResponse(request);
+            if (result < 0) {
+                ALOGE("Failed to execute bssid blacklist request, result = %d", result);
+                return result;
+            }
+
+            ALOGI("Successfully added %d blacklist bssids", mParams->num_bssid);
+            return result;
+        }
+
+        virtual int handleResponse(WifiEvent& reply) {
+            /* Nothing to do on response! */
+            return NL_SKIP;
+        }
+};
+
+wifi_error wifi_set_bssid_blacklist(wifi_request_id id, wifi_interface_handle iface,
+        wifi_bssid_params params)
+{
+    wifi_handle handle = getWifiHandle(iface);
+
+    BssidBlacklistCommand *cmd = new BssidBlacklistCommand(iface, id, &params);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = (wifi_error)cmd->start();
+    //release the reference of command as well
+    cmd->releaseRef();
+    return result;
+}
+
+wifi_error wifi_configure_roaming(wifi_interface_handle iface,
+		wifi_roaming_config *roam_config)
+{
+    wifi_error ret;
+    wifi_bssid_params bssid_params;
+    unsigned int i;
+    wifi_request_id id = 0;
+
+    /* Set bssid blacklist */
+    if (roam_config->num_blacklist_bssid == 0) {
+        /* Flush request */
+        ALOGI("%s: num_blacklist_bssid == 0 (flush)", __FUNCTION__);
+    }
+
+    bssid_params.num_bssid = roam_config->num_blacklist_bssid;
+
+    for (i = 0; i < roam_config->num_blacklist_bssid; i++) {
+        mac_addr &addr1 = roam_config->blacklist_bssid[i];
+        memcpy(&bssid_params.bssids[i], &roam_config->blacklist_bssid[i],
+            sizeof(mac_addr));
+        ALOGI("%02x:%02x:%02x:%02x:%02x:%02x\n", addr1[0],
+            addr1[1], addr1[2], addr1[3], addr1[4], addr1[5]);
+    }
+    ret = wifi_set_bssid_blacklist(id, iface, bssid_params);
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: Failed to configure blacklist bssids", __FUNCTION__);
+        return ret;
+    }
+
+    return ret;
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 class AnqpoConfigureCommand : public WifiCommand
