@@ -131,6 +131,7 @@ typedef enum {
     WIFI_SUBCMD_SET_RSSI_MONITOR,                       /* 0x1016 */
     WIFI_SUBCMD_CONFIG_ND_OFFLOAD,                      /* 0x1017 */
     /* Add more sub commands here */
+    WIFI_SUBCMD_FW_ROAM_POLICY = 0x1019,                /* 0x1019 */
     WIFI_SUBCMD_ROAM_CAPABILITY = 0x101a,               /* 0x101a*/
     GSCAN_SUBCMD_MAX,
 
