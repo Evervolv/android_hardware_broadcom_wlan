@@ -150,7 +150,8 @@ typedef enum {
     GOOGLE_DEBUG_RING_EVENT,
     GOOGLE_DEBUG_MEM_DUMP_EVENT,
     GSCAN_EVENT_ANQPO_HOTSPOT_MATCH,
-    GOOGLE_RSSI_MONITOR_EVENT
+    GOOGLE_RSSI_MONITOR_EVENT,
+    ROAM_EVENT_START = 32,
 } WIFI_EVENT;
 
 typedef void (*wifi_internal_event_handler) (wifi_handle handle, int events);

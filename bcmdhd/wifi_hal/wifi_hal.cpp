@@ -213,6 +213,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_get_packet_filter_capabilities = wifi_get_packet_filter_capabilities;
     fn->wifi_set_packet_filter = wifi_set_packet_filter;
     fn->wifi_get_roaming_capabilities = wifi_get_roaming_capabilities;
+    fn->wifi_configure_roaming = wifi_configure_roaming;
     return WIFI_SUCCESS;
 }
 
