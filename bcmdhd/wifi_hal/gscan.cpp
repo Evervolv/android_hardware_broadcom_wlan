@@ -159,6 +159,8 @@ typedef enum {
     GSCAN_ATTRIBUTE_EPNO_SECURE_BONUS,
     GSCAN_ATTRIBUTE_EPNO_5G_BONUS,
 
+    /* Roaming features */
+    GSCAN_ATTRIBUTE_ROAM_STATE_SET = 140,
     GSCAN_ATTRIBUTE_MAX
 
 } GSCAN_ATTRIBUTE;
@@ -1800,6 +1802,67 @@ wifi_error wifi_configure_roaming(wifi_interface_handle iface,
 
     return ret;
 }
+
+class FirmwareRoamingStateCommand : public WifiCommand
+{
+    private:
+        fw_roaming_state_t roam_state;
+    public:
+        FirmwareRoamingStateCommand(wifi_interface_handle handle,
+                fw_roaming_state_t state)
+            : WifiCommand("FirmwareRoamingStateCommand", handle, -1), roam_state(state)
+        { }
+        int createRequest(WifiRequest& request) {
+            int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_FW_ROAM_POLICY);
+            if (result < 0) {
+                return result;
+            }
+
+            nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+            result = request.put_u32(GSCAN_ATTRIBUTE_ROAM_STATE_SET, roam_state);
+            if (result < 0) {
+                return result;
+            }
+            request.attr_end(data);
+            return result;
+        }
+
+        int start() {
+            ALOGV("Executing firmware roam state set, state = %d", roam_state);
+            WifiRequest request(familyId(), ifaceId());
+            int result = createRequest(request);
+            if (result < 0) {
+                return result;
+            }
+
+            result = requestResponse(request);
+            if (result < 0) {
+                ALOGE("Failed to execute firmware roam state set, result = %d", result);
+                return result;
+            }
+
+            ALOGI("Successfully set firmware roam state - %d", roam_state);
+            return result;
+        }
+
+        virtual int handleResponse(WifiEvent& reply) {
+            /* Nothing to do on response! */
+            return NL_SKIP;
+        }
+};
+
+wifi_error wifi_enable_firmware_roaming(wifi_interface_handle iface,
+            fw_roaming_state_t state)
+{
+    /* Set firmware roaming state */
+    FirmwareRoamingStateCommand *cmd = new FirmwareRoamingStateCommand(iface, state);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = (wifi_error)cmd->start();
+    //release the reference of command as well
+    cmd->releaseRef();
+    return result;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class AnqpoConfigureCommand : public WifiCommand
