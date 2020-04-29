@@ -190,18 +190,22 @@ void convert_to_hal_result(wifi_scan_result *to, wifi_gscan_result_t *from)
 
 class GetCapabilitiesCommand : public WifiCommand
 {
-    wifi_gscan_capabilities *mCapabilities;
-public:
-    GetCapabilitiesCommand(wifi_interface_handle iface, wifi_gscan_capabilities *capabitlites)
-        : WifiCommand("GetGscanCapabilitiesCommand", iface, 0), mCapabilities(capabitlites)
+    void *mCapabilities;
+    uint16_t mRequesttype;
+    int mRequestsize;
+    public:
+    GetCapabilitiesCommand(wifi_interface_handle iface, void *capabitlites, uint16_t request_type,
+            int request_size)
+        : WifiCommand("GetGscanCapabilitiesCommand", iface, 0), mCapabilities(capabitlites), mRequesttype(request_type),
+        mRequestsize(request_size)
     {
-        memset(mCapabilities, 0, sizeof(*mCapabilities));
+        memset(mCapabilities, 0, mRequestsize);
     }
 
     virtual int create() {
         ALOGV("Creating message to get scan capablities; iface = %d", mIfaceInfo->id);
 
-        int ret = mMsg.create(GOOGLE_OUI, GSCAN_SUBCMD_GET_CAPABILITIES);
+        int ret = mMsg.create(GOOGLE_OUI, mRequesttype);
         if (ret < 0) {
             return ret;
         }
@@ -209,7 +213,7 @@ public:
         return ret;
     }
 
-protected:
+    protected:
     virtual int handleResponse(WifiEvent& reply) {
 
         ALOGV("In GetCapabilities::handleResponse");
@@ -225,20 +229,28 @@ protected:
         void *data = reply.get_vendor_data();
         int len = reply.get_vendor_data_len();
 
-        ALOGV("Id = %0x, subcmd = %d, len = %d, expected len = %d", id, subcmd, len,
-                    sizeof(*mCapabilities));
+        ALOGV("Id = %0x, subcmd = 0x%x, len = %d, expected len = %zd", id, subcmd, len,
+            mRequestsize);
 
-        memcpy(mCapabilities, data, min(len, (int) sizeof(*mCapabilities)));
+        memcpy(mCapabilities, data, min(len, mRequestsize));
 
         return NL_OK;
     }
 };
 
-
 wifi_error wifi_get_gscan_capabilities(wifi_interface_handle handle,
         wifi_gscan_capabilities *capabilities)
 {
-    GetCapabilitiesCommand command(handle, capabilities);
+    GetCapabilitiesCommand command(handle, capabilities, GSCAN_SUBCMD_GET_CAPABILITIES,
+            (int)sizeof(wifi_gscan_capabilities));
+    return (wifi_error) command.requestResponse();
+}
+
+wifi_error wifi_get_roaming_capabilities(wifi_interface_handle handle,
+        wifi_roaming_capabilities *capabilities)
+{
+    GetCapabilitiesCommand command(handle, capabilities, WIFI_SUBCMD_ROAM_CAPABILITY,
+            (int)sizeof(wifi_roaming_capabilities));
     return (wifi_error) command.requestResponse();
 }
 
