@@ -652,8 +652,13 @@ public:
 
             // ALOGI("Retrieved Debug data");
             if (mHandler.on_ring_buffer_data) {
-                (*mHandler.on_ring_buffer_data)((char *)status.name, buffer, buffer_size,
-                        &status);
+                /* Skip msg header. Retrieved log */
+                char *pBuff;
+                wifi_ring_buffer_entry *buffer_entry = 
+                            (wifi_ring_buffer_entry *) buffer;
+                pBuff = (char *) (buffer_entry + 1);
+                (*mHandler.on_ring_buffer_data)((char *)status.name, pBuff, 
+                    buffer_entry->entry_size, &status);
             }
         } else {
             ALOGE("Unknown Event");
