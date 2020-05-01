@@ -33,6 +33,8 @@
 #include <netlink/socket.h>
 #include <netlink-private/object-api.h>
 #include <netlink-private/types.h>
+#include <unistd.h>
+
 
 #include "nl80211_copy.h"
 #include "sync.h"
@@ -45,6 +47,7 @@
 #include "common.h"
 #include "cpp_bindings.h"
 #include "brcm_version.h"
+#define WIFI_HAL_EVENT_SOCK_PORT     645
 
 #define ARRAYSIZE(a)	(u8)(sizeof(a) / sizeof(a[0]))
 typedef enum {
@@ -65,7 +68,8 @@ typedef enum {
     LOGGER_DEBUG_GET_DUMP,
     LOGGER_FILE_DUMP_DONE_IND,
     LOGGER_SET_HAL_START,
-    LOGGER_HAL_STOP
+    LOGGER_HAL_STOP,
+    LOGGER_SET_HAL_PID
 } DEBUG_SUB_COMMAND;
 
 typedef enum {
@@ -115,7 +119,8 @@ typedef enum {
 
 typedef enum {
     SET_HAL_START_ATTRIBUTE_DEINIT = 0x0001,
-    SET_HAL_START_ATTRIBUTE_PRE_INIT = 0x0002
+    SET_HAL_START_ATTRIBUTE_PRE_INIT = 0x0002,
+    SET_HAL_START_ATTRIBUTE_EVENT_SOCK_PID = 0x0003
 } SET_HAL_START_ATTRIBUTE;
 
 #define HAL_START_REQUEST_ID 2
@@ -556,8 +561,38 @@ public:
 
     int start() {
         ALOGV("Register loghandler");
+        int result;
+        uint32_t event_sock_pid = getpid() + (WIFI_HAL_EVENT_SOCK_PORT << 22);
         registerVendorHandler(GOOGLE_OUI, GOOGLE_DEBUG_RING_EVENT);
-        return WIFI_SUCCESS;
+
+        WifiRequest request(familyId(), ifaceId());
+
+        /* set hal event socket port to driver */
+        result = request.create(GOOGLE_OUI, LOGGER_SET_HAL_PID);
+        if (result != WIFI_SUCCESS) {
+            ALOGV("Failed to set Hal preInit; result = %d", result);
+            return result;
+        }
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+        result = request.put_u32(SET_HAL_START_ATTRIBUTE_EVENT_SOCK_PID, event_sock_pid);
+        if (result != WIFI_SUCCESS) {
+            ALOGV("Hal preInit Failed to put pic = %d", result);
+            return result;
+        }
+
+        if (result != WIFI_SUCCESS) {
+            ALOGV("Hal preInit Failed to put pid= %d", result);
+            return result;
+        } 
+
+        request.attr_end(data);
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to register set Hal preInit; result = %d", result);
+            return result;
+        }
+        return result;
     }
 
     virtual int cancel() {
