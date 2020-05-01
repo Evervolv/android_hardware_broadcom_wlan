@@ -3211,6 +3211,19 @@ class NanMacControl : public WifiCommand
 
             GET_NAN_HANDLE(info)->mHandlers.NotifyResponse(id(), &rsp_data);
         }
+        if (rsp_vndr_data->subcmd == NAN_SUBCMD_ENABLE) {
+            NanResponseMsg rsp_data;
+            memset(&rsp_data, 0, sizeof(NanResponseMsg));
+            rsp_data.response_type = get_response_type((WIFI_SUB_COMMAND)rsp_vndr_data->subcmd);
+            rsp_data.status = nan_map_response_status(rsp_vndr_data->status);
+
+            ALOGI("NanMacControl:Received response for cmd [%s], TxID %d ret %d\n",
+                  NanRspToString(rsp_data.response_type), mId, rsp_data.status);
+
+            if( rsp_data.status != NAN_STATUS_SUCCESS) {
+                GET_NAN_HANDLE(info)->mHandlers.NotifyResponse(mId, &rsp_data);
+            }
+        }
         return NL_SKIP;
     }
 
