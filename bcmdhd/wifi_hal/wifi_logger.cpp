@@ -83,7 +83,7 @@ typedef enum {
     LOGGER_ATTRIBUTE_LOG_MIN_DATA_SIZE,
     LOGGER_ATTRIBUTE_FW_DUMP_LEN,
     LOGGER_ATTRIBUTE_FW_DUMP_DATA,
-    // LOGGER_ATTRIBUTE_FW_ERR_CODE,
+    LOGGER_ATTRIBUTE_FW_ERR_CODE,
     LOGGER_ATTRIBUTE_RING_DATA,
     LOGGER_ATTRIBUTE_RING_STATUS,
     LOGGER_ATTRIBUTE_RING_NUM,
@@ -775,7 +775,7 @@ public:
         wifi_ring_buffer_id ring_id;
         char *buffer = NULL;
         int buffer_size = 0;
-
+        bool is_err_alert = false;
 
         nlattr *vendor_data = event.get_attribute(NL80211_ATTR_VENDOR_DATA);
         int len = event.get_vendor_data_len();
@@ -794,15 +794,37 @@ public:
                 } else if (it.get_type() == LOGGER_ATTRIBUTE_RING_DATA) {
                     buffer_size = it.get_len();
                     buffer = (char *)it.get_data();
-            /*
                 } else if (it.get_type() == LOGGER_ATTRIBUTE_FW_ERR_CODE) {
+                    /* Error code is for error alert event only */
                     mErrCode = it.get_u32();
-            */
+                    is_err_alert = true;
                 } else {
                     ALOGW("Ignoring invalid attribute type = %d, size = %d",
                             it.get_type(), it.get_len());
                 }
             }
+
+            if(is_err_alert) {
+                mBuffSize = sizeof(mErrCode);
+                if (mBuff) free(mBuff);
+                mBuff = (char *)malloc(mBuffSize);
+                if (!mBuff) {
+                  ALOGE("Buffer allocation failed");
+                  return NL_SKIP;
+                }
+                memcpy(mBuff, (char *)&mErrCode, mBuffSize);
+                ALOGI("Initiating alert callback");
+                if (mHandler.on_alert) {
+                  (*mHandler.on_alert)(id(), mBuff, mBuffSize, mErrCode);
+                }
+                if (mBuff) {
+                  free(mBuff);
+                  mBuff = NULL;
+                }
+                mBuffSize = 0;
+                return NL_OK;
+            }
+
             if (mBuffSize) {
                 ALOGD("dump size: %d meta data size: %d", mBuffSize, buffer_size);
                 if (mBuff) free(mBuff);
