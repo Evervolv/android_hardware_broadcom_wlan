@@ -283,12 +283,27 @@ wifi_error wifi_pre_initialize(void)
         return WIFI_ERROR_UNKNOWN;
     }
 
+    /* Set the socket buffer size */
+    if (nl_socket_set_buffer_size(cmd_sock, (256*1024), 0) < 0) {
+        ALOGE("Could not set size for cmd_sock: %s",
+               strerror(errno));
+    } else {
+        ALOGV("nl_socket_set_buffer_size successful for cmd_sock");
+    }
     struct nl_sock *event_sock = wifi_create_nl_socket(WIFI_HAL_EVENT_SOCK_PORT);
     if (event_sock == NULL) {
         ALOGE("Could not create handle");
         nl_socket_free(cmd_sock);
         free(halInfo);
         return WIFI_ERROR_UNKNOWN;
+    }
+
+    /* Set the socket buffer size */
+    if (nl_socket_set_buffer_size(event_sock, (512*1024), 0) < 0) {
+        ALOGE("Could not set size for event_sock: %s",
+               strerror(errno));
+    } else {
+        ALOGV("nl_socket_set_buffer_size successful for event_sock");
     }
 
     struct nl_cb *cb = nl_socket_get_cb(event_sock);
