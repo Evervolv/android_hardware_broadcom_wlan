@@ -327,7 +327,9 @@ wifi_error wifi_stop_hal(wifi_interface_handle iface);
 wifi_interface_handle wifi_get_wlan_interface(wifi_handle info,
 	    wifi_interface_handle *ifaceHandles, int numIfaceHandles);
 wifi_error wifi_hal_preInit(wifi_interface_handle iface);
-
+/* API to get wake reason statistics */
+wifi_error wifi_get_wake_reason_stats(wifi_interface_handle handle,
+        WLAN_DRIVER_WAKE_REASON_CNT *wifi_wake_reason_cnt);
 void set_hautil_mode(bool halutil_mode);
 bool get_halutil_mode();
 
