@@ -217,6 +217,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_get_tx_pkt_fates = wifi_get_tx_pkt_fates;
     fn->wifi_get_rx_pkt_fates = wifi_get_rx_pkt_fates;
     fn->wifi_get_packet_filter_capabilities = wifi_get_packet_filter_capabilities;
+    fn->wifi_get_wake_reason_stats = wifi_get_wake_reason_stats;
     fn->wifi_set_packet_filter = wifi_set_packet_filter;
     fn->wifi_enable_firmware_roaming = wifi_enable_firmware_roaming;
     fn->wifi_get_roaming_capabilities = wifi_get_roaming_capabilities;
