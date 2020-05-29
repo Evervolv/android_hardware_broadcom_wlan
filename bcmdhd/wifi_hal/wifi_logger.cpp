@@ -83,7 +83,7 @@ typedef enum {
     LOGGER_ATTRIBUTE_LOG_MIN_DATA_SIZE,
     LOGGER_ATTRIBUTE_FW_DUMP_LEN,
     LOGGER_ATTRIBUTE_FW_DUMP_DATA,
-    // LOGGER_ATTRIBUTE_FW_ERR_CODE,
+    LOGGER_ATTRIBUTE_FW_ERR_CODE,
     LOGGER_ATTRIBUTE_RING_DATA,
     LOGGER_ATTRIBUTE_RING_STATUS,
     LOGGER_ATTRIBUTE_RING_NUM,
@@ -116,6 +116,29 @@ typedef enum {
     RX_PACKET_FATE,
 } PktFateReqType;
 
+enum wake_stat_attributes {
+    WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT,
+    WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE,
+    WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT,
+    WAKE_STAT_ATTRIBUTE_CMD_COUNT_USED,
+    WAKE_STAT_ATTRIBUTE_TOTAL_DRIVER_FW,
+    WAKE_STAT_ATTRIBUTE_DRIVER_FW_WAKE,
+    WAKE_STAT_ATTRIBUTE_DRIVER_FW_COUNT,
+    WAKE_STAT_ATTRIBUTE_DRIVER_FW_COUNT_USED,
+    WAKE_STAT_ATTRIBUTE_TOTAL_RX_DATA_WAKE,
+    WAKE_STAT_ATTRIBUTE_RX_UNICAST_COUNT,
+    WAKE_STAT_ATTRIBUTE_RX_MULTICAST_COUNT,
+    WAKE_STAT_ATTRIBUTE_RX_BROADCAST_COUNT,
+    WAKE_STAT_ATTRIBUTE_RX_ICMP_PKT,
+    WAKE_STAT_ATTRIBUTE_RX_ICMP6_PKT,
+    WAKE_STAT_ATTRIBUTE_RX_ICMP6_RA,
+    WAKE_STAT_ATTRIBUTE_RX_ICMP6_NA,
+    WAKE_STAT_ATTRIBUTE_RX_ICMP6_NS,
+    WAKE_STAT_ATTRIBUTE_IPV4_RX_MULTICAST_ADD_CNT,
+    WAKE_STAT_ATTRIBUTE_IPV6_RX_MULTICAST_ADD_CNT,
+    WAKE_STAT_ATTRIBUTE_OTHER__RX_MULTICAST_ADD_CNT,
+    WAKE_STAT_ATTRIBUTE_RX_MULTICAST_PKT_INFO
+};
 
 typedef enum {
     SET_HAL_START_ATTRIBUTE_DEINIT = 0x0001,
@@ -775,7 +798,7 @@ public:
         wifi_ring_buffer_id ring_id;
         char *buffer = NULL;
         int buffer_size = 0;
-
+        bool is_err_alert = false;
 
         nlattr *vendor_data = event.get_attribute(NL80211_ATTR_VENDOR_DATA);
         int len = event.get_vendor_data_len();
@@ -794,15 +817,37 @@ public:
                 } else if (it.get_type() == LOGGER_ATTRIBUTE_RING_DATA) {
                     buffer_size = it.get_len();
                     buffer = (char *)it.get_data();
-            /*
                 } else if (it.get_type() == LOGGER_ATTRIBUTE_FW_ERR_CODE) {
+                    /* Error code is for error alert event only */
                     mErrCode = it.get_u32();
-            */
+                    is_err_alert = true;
                 } else {
                     ALOGW("Ignoring invalid attribute type = %d, size = %d",
                             it.get_type(), it.get_len());
                 }
             }
+
+            if(is_err_alert) {
+                mBuffSize = sizeof(mErrCode);
+                if (mBuff) free(mBuff);
+                mBuff = (char *)malloc(mBuffSize);
+                if (!mBuff) {
+                  ALOGE("Buffer allocation failed");
+                  return NL_SKIP;
+                }
+                memcpy(mBuff, (char *)&mErrCode, mBuffSize);
+                ALOGI("Initiating alert callback");
+                if (mHandler.on_alert) {
+                  (*mHandler.on_alert)(id(), mBuff, mBuffSize, mErrCode);
+                }
+                if (mBuff) {
+                  free(mBuff);
+                  mBuff = NULL;
+                }
+                mBuffSize = 0;
+                return NL_OK;
+            }
+
             if (mBuffSize) {
                 ALOGD("dump size: %d meta data size: %d", mBuffSize, buffer_size);
                 if (mBuff) free(mBuff);
@@ -1316,6 +1361,143 @@ public:
     }
 };
 
+class GetWakeReasonCountCommand : public WifiCommand {
+    WLAN_DRIVER_WAKE_REASON_CNT *mWakeReasonCnt;
+    void *mCmdEventWakeCount;
+    public:
+    GetWakeReasonCountCommand(wifi_interface_handle handle,
+        WLAN_DRIVER_WAKE_REASON_CNT *wlanDriverWakeReasonCount) :
+        WifiCommand("GetWakeReasonCountCommand", handle, 0),
+        mWakeReasonCnt(wlanDriverWakeReasonCount)
+    {
+        mCmdEventWakeCount = mWakeReasonCnt->cmd_event_wake_cnt;
+    }
+
+    int createRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, LOGGER_GET_WAKE_REASON_STATS);
+        if (result < 0) {
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+
+        request.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+
+    int start() {
+        ALOGD("Start get wake stats command\n");
+        WifiRequest request(familyId(), ifaceId());
+
+        int result = createRequest(request);
+        if (result < 0) {
+            ALOGE("Failed to create request result = %d\n", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to register wake stats  response; result = %d\n", result);
+        }
+        return result;
+    }
+
+    protected:
+    int handleResponse(WifiEvent& reply) {
+        ALOGE("In GetWakeReasonCountCommand::handleResponse");
+
+        if (reply.get_cmd() != NL80211_CMD_VENDOR) {
+            ALOGD("Ignoring reply with cmd = %d", reply.get_cmd());
+            return NL_SKIP;
+        }
+
+        int id = reply.get_vendor_id();
+        int subcmd = reply.get_vendor_subcmd();
+
+        nlattr *vendor_data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
+        int len = reply.get_vendor_data_len();
+
+        ALOGV("Id = %0x, subcmd = %d, len = %d", id, subcmd, len);
+        if (vendor_data == NULL || len == 0) {
+            ALOGE("no vendor data in GetGetWakeReasonCountCommand response; ignoring it");
+            return NL_SKIP;
+        }
+
+        for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
+            switch (it.get_type()) {
+                case WAKE_STAT_ATTRIBUTE_TOTAL_DRIVER_FW:
+                    mWakeReasonCnt->total_driver_fw_local_wake =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT:
+                    mWakeReasonCnt->total_cmd_event_wake =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_CMD_COUNT_USED:
+                    mWakeReasonCnt->cmd_event_wake_cnt_used =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE:
+                    memcpy(mCmdEventWakeCount, it.get_data(),
+                            (mWakeReasonCnt->cmd_event_wake_cnt_used * sizeof(int)));
+                    break;
+                case WAKE_STAT_ATTRIBUTE_TOTAL_RX_DATA_WAKE:
+                    mWakeReasonCnt->total_rx_data_wake =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_UNICAST_COUNT:
+                    mWakeReasonCnt->rx_wake_details.rx_unicast_cnt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_MULTICAST_COUNT:
+                    mWakeReasonCnt->rx_wake_details.rx_multicast_cnt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_BROADCAST_COUNT:
+                    mWakeReasonCnt->rx_wake_details.rx_broadcast_cnt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_ICMP_PKT:
+                    mWakeReasonCnt->rx_wake_pkt_classification_info.icmp_pkt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_ICMP6_PKT:
+                    mWakeReasonCnt->rx_wake_pkt_classification_info.icmp6_pkt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_ICMP6_RA:
+                    mWakeReasonCnt->rx_wake_pkt_classification_info.icmp6_ra =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_ICMP6_NA:
+                    mWakeReasonCnt->rx_wake_pkt_classification_info.icmp6_na =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_RX_ICMP6_NS:
+                    mWakeReasonCnt->rx_wake_pkt_classification_info.icmp6_ns =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_IPV4_RX_MULTICAST_ADD_CNT:
+                    mWakeReasonCnt->rx_multicast_wake_pkt_info.ipv4_rx_multicast_addr_cnt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_IPV6_RX_MULTICAST_ADD_CNT:
+                    mWakeReasonCnt->rx_multicast_wake_pkt_info.ipv6_rx_multicast_addr_cnt =
+                        it.get_u32();
+                    break;
+                case WAKE_STAT_ATTRIBUTE_OTHER__RX_MULTICAST_ADD_CNT:
+                    mWakeReasonCnt->rx_multicast_wake_pkt_info.other_rx_multicast_addr_cnt =
+                        it.get_u32();
+                    break;
+                default:
+                    break;
+            }
+
+        }
+        return NL_OK;
+    }
+};
+
 wifi_error wifi_start_pkt_fate_monitoring(wifi_interface_handle handle)
 {
     PacketFateCommand *cmd = new PacketFateCommand(handle);
@@ -1344,6 +1526,16 @@ wifi_error wifi_get_rx_pkt_fates(wifi_interface_handle handle,
     PacketFateCommand *cmd = new PacketFateCommand(handle, rx_report_bufs,
                 n_requested_fates, n_provided_fates);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = (wifi_error)cmd->start();
+    cmd->releaseRef();
+    return result;
+}
+
+wifi_error wifi_get_wake_reason_stats(wifi_interface_handle handle,
+        WLAN_DRIVER_WAKE_REASON_CNT *wifi_wake_reason_cnt)
+{
+    GetWakeReasonCountCommand *cmd =
+        new GetWakeReasonCountCommand(handle, wifi_wake_reason_cnt);
     wifi_error result = (wifi_error)cmd->start();
     cmd->releaseRef();
     return result;
