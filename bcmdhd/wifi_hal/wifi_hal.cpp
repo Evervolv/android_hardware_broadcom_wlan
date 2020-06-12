@@ -245,6 +245,8 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
 #ifdef NAN_CLUSTER_MERGE
     fn->wifi_nan_enable_merge_request = nan_enable_cluster_merge_request;
 #endif /* NAN_CLUSTER_MERGE */
+    fn->wifi_select_tx_power_scenario = wifi_select_tx_power_scenario;
+    fn->wifi_reset_tx_power_scenario = wifi_reset_tx_power_scenario;
 
     return WIFI_SUCCESS;
 }
