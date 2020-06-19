@@ -44,6 +44,7 @@
  */
 
 const uint32_t GOOGLE_OUI = 0x001A11;
+const uint32_t BRCM_OUI =  0x001018;
 /* TODO: define vendor OUI here */
 
 
@@ -213,6 +214,7 @@ typedef enum {
     NAN_EVENT_TCA				= 29,
     NAN_EVENT_SUBSCRIBE_UNMATCH			= 30,
     NAN_EVENT_UNKNOWN,
+    BRCM_VENDOR_EVENT_HANGED			= 33,
     ROAM_EVENT_START,
     GOOGLE_FILE_DUMP_EVENT			= 37,
     NAN_ASYNC_RESPONSE_DISABLED			= 40

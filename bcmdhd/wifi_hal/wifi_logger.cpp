@@ -91,6 +91,7 @@ typedef enum {
     LOGGER_ATTRIBUTE_DRIVER_DUMP_DATA,
     LOGGER_ATTRIBUTE_PKT_FATE_NUM,
     LOGGER_ATTRIBUTE_PKT_FATE_DATA,
+    LOGGER_ATTRIBUTE_HANG_REASON,
 } LOGGER_ATTRIBUTE;
 
 typedef enum {
@@ -147,7 +148,7 @@ typedef enum {
 } SET_HAL_START_ATTRIBUTE;
 
 #define HAL_START_REQUEST_ID 2
-
+#define HAL_RESTART_ID 3
 ///////////////////////////////////////////////////////////////////////////////
 class DebugCommand : public WifiCommand
 {
@@ -896,6 +897,64 @@ public:
     }
 };
 
+class SetRestartHandler : public WifiCommand
+{
+    wifi_subsystem_restart_handler mHandler;
+    char *mBuff;
+public:
+    SetRestartHandler(wifi_handle handle, wifi_request_id id, wifi_subsystem_restart_handler handler)
+        : WifiCommand("SetRestartHandler", handle, id), mHandler(handler), mBuff(NULL)
+    { }
+    int start() {
+        ALOGV("Start Restart Handler");
+        registerVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
+        return WIFI_SUCCESS;
+    }
+    virtual int cancel() {
+        ALOGV("Clear Restart Handler");
+
+        /* unregister alert handler */
+        unregisterVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
+        wifi_unregister_cmd(wifiHandle(), 0);
+        ALOGD("Success to clear restarthandler");
+        return WIFI_SUCCESS;
+    }
+
+    virtual int handleResponse(WifiEvent& reply) {
+        /* Nothing to do on response! */
+        return NL_OK;
+    }
+
+    virtual int handleEvent(WifiEvent& event) {
+        nlattr *vendor_data = event.get_attribute(NL80211_ATTR_VENDOR_DATA);
+        int len = event.get_vendor_data_len();
+        int event_id = event.get_vendor_subcmd();
+        ALOGI("Got event: %d", event_id);
+
+        if (vendor_data == NULL || len == 0) {
+            ALOGE("No Debug data found");
+            return NL_SKIP;
+        }
+        if (event_id == BRCM_VENDOR_EVENT_HANGED) {
+            for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
+                if (it.get_type() == LOGGER_ATTRIBUTE_HANG_REASON) {
+                    mBuff = (char *)it.get_data();
+                } else {
+                    ALOGW("Ignoring invalid attribute type = %d, size = %d",
+                            it.get_type(), it.get_len());
+                }
+            }
+
+            if (*mHandler.on_subsystem_restart) {
+                (*mHandler.on_subsystem_restart)(mBuff);
+            } else {
+                ALOGW("No Restart handler registered");
+            }
+        }
+        return NL_OK;
+    }
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 class HalInit : public WifiCommand
 {
@@ -1036,6 +1095,27 @@ wifi_error wifi_stop_hal(wifi_interface_handle iface)
     cmd->releaseRef();
     return WIFI_SUCCESS;
 }
+
+
+wifi_error wifi_set_subsystem_restart_handler(wifi_handle handle,
+                                              wifi_subsystem_restart_handler handler)
+{
+    SetRestartHandler *cmd = new SetRestartHandler(handle, HAL_RESTART_ID, handler);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = wifi_register_cmd(handle, HAL_RESTART_ID, cmd);
+    if (result != WIFI_SUCCESS) {
+        cmd->releaseRef();
+        return result;
+    }
+    result = (wifi_error)cmd->start();
+    if (result != WIFI_SUCCESS) {
+        wifi_unregister_cmd(handle, HAL_RESTART_ID);
+        cmd->releaseRef();
+        return result;
+    }
+    return result;
+}
+
 
 wifi_error wifi_set_alert_handler(wifi_request_id id, wifi_interface_handle iface,
         wifi_alert_handler handler)

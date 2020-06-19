@@ -247,6 +247,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
 #endif /* NAN_CLUSTER_MERGE */
     fn->wifi_select_tx_power_scenario = wifi_select_tx_power_scenario;
     fn->wifi_reset_tx_power_scenario = wifi_reset_tx_power_scenario;
+    fn->wifi_set_subsystem_restart_handler = wifi_set_subsystem_restart_handler;
 
     return WIFI_SUCCESS;
 }
