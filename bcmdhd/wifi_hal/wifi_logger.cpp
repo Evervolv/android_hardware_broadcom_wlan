@@ -625,6 +625,7 @@ public:
 
         /* unregister event handler */
         unregisterVendorHandler(GOOGLE_OUI, GOOGLE_DEBUG_RING_EVENT);
+        wifi_unregister_cmd(wifiHandle(), id());
 
         WifiRequest request(familyId(), ifaceId());
         int result = request.create(GOOGLE_OUI, LOGGER_RESET_LOGGING);
@@ -730,7 +731,7 @@ wifi_error wifi_reset_log_handler(wifi_request_id id, wifi_interface_handle ifac
         return WIFI_SUCCESS;
     }
 
-    return wifi_cancel_cmd(id, iface);
+    return wifi_get_cancel_cmd(id, iface);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -1155,7 +1156,7 @@ wifi_error wifi_reset_alert_handler(wifi_request_id id, wifi_interface_handle if
         return WIFI_SUCCESS;
     }
 
-    return wifi_cancel_cmd(id, iface);
+    return wifi_get_cancel_cmd(id, iface);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

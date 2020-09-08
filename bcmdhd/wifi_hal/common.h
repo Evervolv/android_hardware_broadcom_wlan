@@ -323,6 +323,7 @@ hal_info *getHalInfo(wifi_interface_handle handle);
 wifi_handle getWifiHandle(hal_info *info);
 wifi_interface_handle getIfaceHandle(interface_info *info);
 wifi_error wifi_cancel_cmd(wifi_request_id id, wifi_interface_handle iface);
+wifi_error wifi_get_cancel_cmd(wifi_request_id id, wifi_interface_handle iface);
 wifi_error nan_deinit_handler();
 wifi_error wifi_start_hal(wifi_interface_handle iface);
 wifi_error wifi_stop_hal(wifi_interface_handle iface);

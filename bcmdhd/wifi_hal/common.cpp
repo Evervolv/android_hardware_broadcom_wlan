@@ -263,6 +263,19 @@ wifi_error wifi_cancel_cmd(wifi_request_id id, wifi_interface_handle iface)
     return WIFI_ERROR_INVALID_ARGS;
 }
 
+wifi_error wifi_get_cancel_cmd(wifi_request_id id, wifi_interface_handle iface)
+{
+    wifi_handle handle = getWifiHandle(iface);
+    WifiCommand *cmd = wifi_get_cmd(handle, id);
+    ALOGV("Get Cancel WifiCommand = %p", cmd);
+    if (cmd) {
+        cmd->cancel();
+        cmd->releaseRef();
+        return WIFI_SUCCESS;
+    }
+
+    return WIFI_ERROR_INVALID_ARGS;
+}
 void set_hautil_mode(bool util_mode)
 {
     halutil_mode = util_mode;
