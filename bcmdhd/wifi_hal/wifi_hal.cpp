@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2017 The Android Open Source Project
  *
- * Portions copyright (C) 2017 Broadcom Limited
+ * Portions copyright (C) 2019 Broadcom Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -97,14 +97,19 @@ typedef enum wifi_attr {
     ANDR_WIFI_ATTRIBUTE_TCPACK_SUP_VALUE,
     ANDR_WIFI_ATTRIBUTE_LATENCY_MODE,
     ANDR_WIFI_ATTRIBUTE_RANDOM_MAC,
-    ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO
+    ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO,
+    ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION,
+    ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW
     // Add more attribute here
 } wifi_attr_t;
 
 enum wifi_rssi_monitor_attr {
-    RSSI_MONITOR_ATTRIBUTE_MAX_RSSI,
-    RSSI_MONITOR_ATTRIBUTE_MIN_RSSI,
-    RSSI_MONITOR_ATTRIBUTE_START,
+    RSSI_MONITOR_ATTRIBUTE_INVALID	= 0,
+    RSSI_MONITOR_ATTRIBUTE_MAX_RSSI	= 1,
+    RSSI_MONITOR_ATTRIBUTE_MIN_RSSI	= 2,
+    RSSI_MONITOR_ATTRIBUTE_START	= 3,
+    // Add more attribute here
+    RSSI_MONITOR_ATTRIBUTE_MAX
 };
 
 enum wifi_apf_attr {
@@ -248,6 +253,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_select_tx_power_scenario = wifi_select_tx_power_scenario;
     fn->wifi_reset_tx_power_scenario = wifi_reset_tx_power_scenario;
     fn->wifi_set_subsystem_restart_handler = wifi_set_subsystem_restart_handler;
+    fn->wifi_set_thermal_mitigation_mode = wifi_set_thermal_mitigation_mode;
 
     return WIFI_SUCCESS;
 }
@@ -1688,6 +1694,89 @@ wifi_error wifi_reset_tx_power_scenario(wifi_interface_handle handle)
     ALOGE("wifi_reset_tx_power_scenario");
     TxPowerScenario command(handle);
     return (wifi_error)command.start(scenario);
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
+class ThermalMitigation : public WifiCommand {
+private:
+    wifi_thermal_mode mMitigation;
+    u32 mCompletionWindow;
+public:
+    // constructor for thermal mitigation setting
+    ThermalMitigation(wifi_interface_handle handle,
+		    wifi_thermal_mode mitigation, u32 completion_window)
+    : WifiCommand("ThermalMitigation", handle, 0)
+    {
+        mMitigation = mitigation;
+		mCompletionWindow = completion_window;
+    }
+
+    int createRequest(WifiRequest& request, int subcmd,
+		    wifi_thermal_mode mitigation, u32 completion_window) {
+        int result = request.create(GOOGLE_OUI, subcmd);
+        if (result < 0) {
+            return result;
+        }
+
+        if ((mitigation < WIFI_MITIGATION_NONE) ||
+           (mitigation > WIFI_MITIGATION_EMERGENCY)) {
+            ALOGE("Unsupported tx mitigation value:%d\n", mitigation);
+            return WIFI_ERROR_NOT_SUPPORTED;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+        result = request.put_s8(ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION, mitigation);
+        if (result < 0) {
+            ALOGE("Failed to put tx power scenario request; result = %d", result);
+            return result;
+        }
+        result = request.put_u32(ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW,
+		       	completion_window);
+        if (result < 0) {
+            ALOGE("Failed to put tx power scenario request; result = %d", result);
+            return result;
+        }
+
+        request.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+
+    int start() {
+        WifiRequest request(familyId(), ifaceId());
+        int result = createRequest(request, WIFI_SUBCMD_THERMAL_MITIGATION, mMitigation,
+		       	mCompletionWindow);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to create request; result = %d", result);
+            return result;
+        }
+
+        ALOGD("try to get resp; mitigation=%d, delay=%d", mMitigation, mCompletionWindow);
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to send thermal mitigation; result = %d", result);
+        }
+        return result;
+    }
+protected:
+    virtual int handleResponse(WifiEvent& reply) {
+        ALOGD("Request complete!");
+        /* Nothing to do on response! */
+        return NL_SKIP;
+    }
+};
+
+wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
+                                            wifi_thermal_mode mode,
+                                            u32 completion_window)
+{
+    int numIfaceHandles = 0;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+    ThermalMitigation command(wlan0Handle, mode, completion_window);
+    return (wifi_error)command.start();
 }
 
 /////////////////////////////////////////////////////////////////////////////

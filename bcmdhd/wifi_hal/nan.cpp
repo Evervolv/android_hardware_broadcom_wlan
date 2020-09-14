@@ -664,7 +664,7 @@ class NanDiscEnginePrimitive : public WifiCommand
         mInstId = mParams->publish_id;
         nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
 
-        result = request.put_u16(NAN_ATTRIBUTE_PUBLISH_ID, mInstId);
+        result = request.put_u32(NAN_ATTRIBUTE_PUBLISH_ID, mInstId);
         if (result < 0) {
             ALOGE("%s: Failed to fill pub id, result = %d\n", __func__, result);
             return result;
@@ -967,7 +967,7 @@ class NanDiscEnginePrimitive : public WifiCommand
         }
         ALOGI("%s: pub id = %d, inst_id = %d\n", __func__, mParams->publish_id, mInstId);
 
-        result = request.put_u16(NAN_ATTRIBUTE_PUBLISH_ID, mInstId);
+        result = request.put_u32(NAN_ATTRIBUTE_PUBLISH_ID, mInstId);
         if (result < 0) {
             ALOGE("%s: Failed to fill NAN_ATTRIBUTE_PUBLISH_ID, result = %d\n",
                     __func__, result);
@@ -1528,7 +1528,7 @@ class NanDiscEnginePrimitive : public WifiCommand
                     attr_type = it.get_type();
 
                     if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
-                        pub_term_event.publish_id = it.get_u16();
+                        pub_term_event.publish_id = it.get_u32();
                         ALOGI("pub id = %u", pub_term_event.publish_id);
                     } else if (attr_type == NAN_ATTRIBUTE_STATUS) {
                         pub_term_event.reason = (NanStatusType)it.get_u8();
@@ -1560,7 +1560,7 @@ class NanDiscEnginePrimitive : public WifiCommand
                         ALOGI("sub id: %u", it.get_u16());
                         subscribe_event.publish_subscribe_id = it.get_u8();
                     } else if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
-                        ALOGI("pub id: %u", it.get_u16());
+                        ALOGI("pub id: %u", it.get_u32());
                         subscribe_event.requestor_instance_id = it.get_u8();
                     } else if (attr_type == NAN_ATTRIBUTE_MAC_ADDR) {
                         memcpy(subscribe_event.addr, it.get_data(), NAN_MAC_ADDR_LEN);
@@ -1845,7 +1845,7 @@ class NanDataPathPrimitive : public WifiCommand
 
         nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
 
-        result = request.put_u8(NAN_ATTRIBUTE_PUBLISH_ID, mParams->requestor_instance_id);
+        result = request.put_u32(NAN_ATTRIBUTE_PUBLISH_ID, mParams->requestor_instance_id);
         if (result < 0) {
             ALOGE("%s: Failed to fill instance id = %d, result = %d\n",
                     __func__, mParams->requestor_instance_id, result);
@@ -2304,8 +2304,8 @@ class NanDataPathPrimitive : public WifiCommand
                     attr_type = it.get_type();
 
                     if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
-                        ALOGI("publish_id: %u", it.get_u16());
-                        ndp_request_event.service_instance_id = it.get_u16();
+                        ALOGI("publish_id: %u", it.get_u32());
+                        ndp_request_event.service_instance_id = it.get_u32();
 
                     } else if (attr_type == NAN_ATTRIBUTE_MAC_ADDR) {
                         memcpy(ndp_request_event.peer_disc_mac_addr,
@@ -3415,7 +3415,7 @@ class NanMacControl : public WifiCommand
                     attr_type = it.get_type();
 
                     if (attr_type == NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO_LEN) {
-                        sdfInd.data.frame_len = it.get_u32();
+                        sdfInd.data.frame_len = it.get_u16();
                         if (sdfInd.data.frame_len > NAN_MAX_FRAME_DATA_LEN) {
                             sdfInd.data.frame_len = NAN_MAX_FRAME_DATA_LEN;
                         }
@@ -4642,7 +4642,7 @@ class NanEventCap : public WifiCommand
                         attr_type = it.get_type();
 
                         if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
-                            pub_term_event.publish_id = it.get_u16();
+                            pub_term_event.publish_id = it.get_u32();
                             ALOGI("pub id %u", pub_term_event.publish_id);
                         } else if (attr_type == NAN_ATTRIBUTE_STATUS) {
                             pub_term_event.reason = (NanStatusType)it.get_u8();
@@ -4837,7 +4837,7 @@ class NanEventCap : public WifiCommand
                         attr_type = it.get_type();
 
                         if (attr_type == NAN_ATTRIBUTE_SERVICE_SPECIFIC_INFO_LEN) {
-                            sdfInd.data.frame_len = it.get_u32();
+                            sdfInd.data.frame_len = it.get_u16();
                             if (sdfInd.data.frame_len > NAN_MAX_FRAME_DATA_LEN) {
                                 sdfInd.data.frame_len = NAN_MAX_FRAME_DATA_LEN;
                             }
@@ -4893,8 +4893,8 @@ class NanEventCap : public WifiCommand
                         attr_type = it.get_type();
 
                         if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
-                            ALOGI("publish_id: %u\n", it.get_u16());
-                            ndp_request_event.service_instance_id = it.get_u16();
+                            ALOGI("publish_id: %u\n", it.get_u32());
+                            ndp_request_event.service_instance_id = it.get_u32();
 
                         } else if (attr_type == NAN_ATTRIBUTE_MAC_ADDR) {
                             memcpy(ndp_request_event.peer_disc_mac_addr,
