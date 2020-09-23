@@ -100,6 +100,7 @@ typedef struct dot11_rm_ie dot11_rm_ie_t;
 #define DOT11_HDR_LEN 2
 #define DOT11_RM_IE_LEN       5
 #define DOT11_MNG_MEASURE_REQUEST_ID		38	/* 11H MeasurementRequest */
+#define DOT11_MNG_MEASURE_REPORT_ID		39	/* 11H MeasurementResponse */
 #define DOT11_MEASURE_TYPE_LCI		8   /* d11 measurement LCI type */
 #define DOT11_MEASURE_TYPE_CIVICLOC	11  /* d11 measurement location civic */
 
@@ -317,6 +318,7 @@ class RttCommand : public WifiCommand
     unsigned numRttParams;
     int mCompleted;
     int currentIdx;
+    int currDtlIdx;
     int totalCnt;
     static const int MAX_RESULTS = 1024;
     wifi_rtt_result *rttResults[MAX_RESULTS];
@@ -332,6 +334,7 @@ public:
         currentIdx = 0;
         mCompleted = 0;
         totalCnt = 0;
+        currDtlIdx = 0;
     }
 
     RttCommand(wifi_interface_handle iface, int id)
@@ -340,7 +343,11 @@ public:
         currentIdx = 0;
         mCompleted = 0;
         totalCnt = 0;
+        currDtlIdx = 0;
         numRttParams = 0;
+	memset(rttResults, 0, sizeof(rttResults));
+	rttParams = NULL;
+	rttHandler.on_rtt_results = NULL;
     }
 
     int createSetupRequest(WifiRequest& request) {
@@ -455,7 +462,11 @@ public:
         }
 
         nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
-        request.put_u8(RTT_ATTRIBUTE_TARGET_CNT, num_devices);
+	result = request.put_u8(RTT_ATTRIBUTE_TARGET_CNT, num_devices);
+
+	if (result < 0) {
+		return result;
+	}
         for(unsigned i = 0; i < num_devices; i++) {
             result = request.put_addr(RTT_ATTRIBUTE_TARGET_MAC, addr[i]);
             if (result < 0) {
@@ -532,6 +543,7 @@ public:
         int len = event.get_vendor_data_len();
         if (vendor_data == NULL || len == 0) {
             ALOGI("No rtt results found");
+            return NL_STOP;
         }
         for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
             if (it.get_type() == RTT_ATTRIBUTE_RESULTS_COMPLETE) {
@@ -570,14 +582,14 @@ public:
                             dot11_rm_ie_t *ele_2;
                             /* The result has LCI or LCR element */
                             ele_1 = (dot11_rm_ie_t *)(rtt_result + 1);
-                            if (ele_1->id == DOT11_MNG_MEASURE_REQUEST_ID) {
+                            if (ele_1->id == DOT11_MNG_MEASURE_REPORT_ID) {
                                 if (ele_1->type == DOT11_MEASURE_TYPE_LCI) {
                                     rtt_result->LCI = (wifi_information_element *)ele_1;
                                     result_len -= (ele_1->len + DOT11_HDR_LEN);
                                     /* get a next rm ie */
                                     if (result_len > 0) {
                                         ele_2 = (dot11_rm_ie_t *)((char *)ele_1 + (ele_1->len + DOT11_HDR_LEN));
-                                        if ((ele_2->id == DOT11_MNG_MEASURE_REQUEST_ID) &&
+                                        if ((ele_2->id == DOT11_MNG_MEASURE_REPORT_ID) &&
                                                 (ele_2->type == DOT11_MEASURE_TYPE_CIVICLOC)) {
                                             rtt_result->LCR = (wifi_information_element *)ele_2;
                                         }
@@ -588,7 +600,7 @@ public:
                                     /* get a next rm ie */
                                     if (result_len > 0) {
                                         ele_2 = (dot11_rm_ie_t *)((char *)ele_1 + (ele_1->len + DOT11_HDR_LEN));
-                                        if ((ele_2->id == DOT11_MNG_MEASURE_REQUEST_ID) &&
+                                        if ((ele_2->id == DOT11_MNG_MEASURE_REPORT_ID) &&
                                                 (ele_2->type == DOT11_MEASURE_TYPE_LCI)) {
                                             rtt_result->LCI = (wifi_information_element *)ele_2;
                                         }
@@ -599,13 +611,14 @@ public:
                         totalCnt++;
                         ALOGI("retrived rtt_result : \n\tburst_num :%d, measurement_number : %d, success_number : %d\n"
                                 "\tnumber_per_burst_peer : %d, status : %s, retry_after_duration : %d s\n"
-                                "\trssi : %d dbm, rx_rate : %d Kbps, rtt : %llu ns, rtt_sd : %llu\n"
-                                "\tdistance : %d, burst_duration : %d ms, negotiated_burst_num : %d\n",
+				"\trssi : %d dbm, rx_rate : %d Kbps, rtt : %lu ns, rtt_sd : %lu\n"
+				"\tdistance : %d cm, burst_duration : %d ms, negotiated_burst_num : %d\n",
                                 rtt_result->burst_num, rtt_result->measurement_number,
                                 rtt_result->success_number, rtt_result->number_per_burst_peer,
                                 get_err_info(rtt_result->status), rtt_result->retry_after_duration,
                                 rtt_result->rssi, rtt_result->rx_rate.bitrate * 100,
-                                rtt_result->rtt/10, rtt_result->rtt_sd, rtt_result->distance_mm / 10,
+				(unsigned long)rtt_result->rtt/1000, (unsigned long)rtt_result->rtt_sd,
+			       	rtt_result->distance_mm / 10,
                                 rtt_result->burst_duration, rtt_result->negotiated_burst_num);
                         currentIdx++;
                     }
@@ -615,7 +628,9 @@ public:
         }
         if (mCompleted) {
             unregisterVendorHandler(GOOGLE_OUI, RTT_EVENT_COMPLETE);
-            (*rttHandler.on_rtt_results)(id(), totalCnt, rttResults);
+	    if (*rttHandler.on_rtt_results) {
+                (*rttHandler.on_rtt_results)(id(), totalCnt, rttResults);
+            }
             for (int i = 0; i < currentIdx; i++) {
                 free(rttResults[i]);
                 rttResults[i] = NULL;
@@ -634,7 +649,19 @@ public:
 wifi_error wifi_rtt_range_request(wifi_request_id id, wifi_interface_handle iface,
         unsigned num_rtt_config, wifi_rtt_config rtt_config[], wifi_rtt_event_handler handler)
 {
+    if (iface == NULL) {
+	ALOGE("wifi_rtt_range_request: NULL iface pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
     wifi_handle handle = getWifiHandle(iface);
+    if (handle == NULL) {
+	ALOGE("wifi_rtt_range_request: NULL handle pointer provided."
+	" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
     RttCommand *cmd = new RttCommand(iface, id, num_rtt_config, rtt_config, handler);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
     wifi_error result = wifi_register_cmd(handle, id, cmd);
@@ -655,7 +682,19 @@ wifi_error wifi_rtt_range_request(wifi_request_id id, wifi_interface_handle ifac
 wifi_error wifi_rtt_range_cancel(wifi_request_id id,  wifi_interface_handle iface,
         unsigned num_devices, mac_addr addr[])
 {
+   if (iface == NULL) {
+	ALOGE("wifi_rtt_range_cancel: NULL iface pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+   }
+
     wifi_handle handle = getWifiHandle(iface);
+    if (handle == NULL) {
+	ALOGE("wifi_rtt_range_cancel: NULL handle pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
     RttCommand *cmd = new RttCommand(iface, id);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
     cmd->cancel_specific(num_devices, addr);
@@ -667,6 +706,18 @@ wifi_error wifi_rtt_range_cancel(wifi_request_id id,  wifi_interface_handle ifac
 wifi_error wifi_get_rtt_capabilities(wifi_interface_handle iface,
         wifi_rtt_capabilities *capabilities)
 {
+    if (iface == NULL) {
+	ALOGE("wifi_get_rtt_capabilities: NULL iface pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    if (capabilities == NULL) {
+	ALOGE("wifi_get_rtt_capabilities: NULL capabilities pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
     GetRttCapabilitiesCommand command(iface, capabilities);
     return (wifi_error) command.requestResponse();
 }
@@ -675,6 +726,12 @@ wifi_error wifi_get_rtt_capabilities(wifi_interface_handle iface,
 wifi_error wifi_rtt_get_responder_info(wifi_interface_handle iface,
         wifi_rtt_responder* responderInfo)
 {
+    if (iface == NULL) {
+	ALOGE("wifi_rtt_get_responder_info: NULL iface pointer provided."
+		" Exit.");
+	return WIFI_ERROR_INVALID_ARGS;
+    }
+
     GetRttResponderInfoCommand command(iface, responderInfo);
     return (wifi_error) command.requestResponse();
 

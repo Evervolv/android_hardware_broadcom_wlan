@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2017 The Android Open Source Project
  *
- * Portions copyright (C) 2019 Broadcom Limited
+ * Portions copyright (C) 2017 Broadcom Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -310,7 +310,6 @@ typedef enum {
     NAN_DATA_PATH_IFACE_UP                      = 17,
     NAN_DATA_PATH_SEC_INFO                      = 18,
     NAN_VERSION_INFO                            = 19,
-    NAN_REQUEST_ENABLE_MERGE		    = 20,
     NAN_REQUEST_LAST                            = 0xFFFF
 } NanRequestType;
 
@@ -381,41 +380,7 @@ static int is_cmd_response(int cmd);
 static int get_svc_hash(unsigned char *svc_name, u16 svc_name_len,
         u8 *svc_hash, u16 svc_hash_len);
 NanResponseType get_response_type(WIFI_SUB_COMMAND nan_subcmd);
-static NanStatusType nan_map_term_status(u32 vendor_reason);
 static NanStatusType nan_map_response_status(int vendor_status);
-static int ioctl_sock = 0;
-
-static int setFlags(int s, struct ifreq *ifr, int set, int clr)
-{
-    if(ioctl(s, SIOCGIFFLAGS, ifr) < 0) {
-        return WIFI_ERROR_UNKNOWN;
-    }
-
-    ifr->ifr_flags = (ifr->ifr_flags & (~clr)) | set;
-    if (ioctl(s, SIOCSIFFLAGS, ifr) < 0) {
-        return WIFI_ERROR_UNKNOWN;
-    }
-
-    return WIFI_SUCCESS;
-}
-
-static inline void init_sockaddr_in(struct sockaddr_in *sin, const char *addr)
-{
-    sin->sin_family = AF_INET;
-    sin->sin_port = 0;
-    sin->sin_addr.s_addr = inet_addr(addr);
-}
-
-static int setAddr(int s, struct ifreq *ifr, const char *addr)
-{
-    init_sockaddr_in((struct sockaddr_in *) &ifr->ifr_addr, addr);
-
-    if (ioctl(s, SIOCSIFADDR, ifr) < 0) {
-        return WIFI_ERROR_UNKNOWN;
-    }
-
-    return WIFI_SUCCESS;
-}
 
 /* Function to separate the common events to NAN1.0 events */
 static int is_de_event(int cmd) {
@@ -1513,7 +1478,6 @@ class NanDiscEnginePrimitive : public WifiCommand
     int handleEvent(WifiEvent& event) {
         int cmd = event.get_vendor_subcmd();
         u16 attr_type;
-        int result;
 
         ALOGI("Received NanDiscEnginePrimitive event: %d\n", event.get_cmd());
         nlattr *vendor_data = event.get_attribute(NL80211_ATTR_VENDOR_DATA);
@@ -2484,10 +2448,6 @@ class NanMacControl : public WifiCommand
             /* TODO: Not yet implemented */
         } else if (mType == NAN_VERSION_INFO) {
             return createVersionRequest(request);
-#ifdef NAN_CLUSTER_MERGE
-        } else if (mType == NAN_REQUEST_ENABLE_MERGE) {
-            return createEnableMergeRequest(request, (NanEnableMergeRequest *)mParams);
-#endif /* NAN_CLUSTER_MERGE */
         } else {
             ALOGE("Unknown Nan request\n");
         }
@@ -2874,26 +2834,6 @@ class NanMacControl : public WifiCommand
         NAN_DBG_EXIT();
         return result;
     }
-
-#ifdef NAN_CLUSTER_MERGE
-    int createEnableMergeRequest(WifiRequest& request,
-            NanEnableMergeRequest *mParams) {
-        int result = request.create(GOOGLE_OUI, NAN_SUBCMD_ENABLE_MERGE);
-        if (result < 0) {
-            ALOGE("%s: Fail to create request\n", __func__);
-            return result;
-        }
-        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
-        result = request.put_u8(NAN_ATTRIBUTE_ENABLE_MERGE, mParams->enable);
-        if (result < 0) {
-            ALOGE("%s: Failing in enable merge, result = %d\n", __func__, result);
-            return result;
-        }
-        request.attr_end(data);
-        NAN_DBG_EXIT();
-        return WIFI_SUCCESS;
-    }
-#endif /* NAN_CLUSTER_MERGE */
 
     int createConfigRequest(WifiRequest& request, NanConfigRequest *mParams) {
 
@@ -3282,7 +3222,7 @@ class NanMacControl : public WifiCommand
                 ndp_instance_id = it.get_u32();
                 ALOGI("handleEvent: ndp_instance_id = [%d]\n", ndp_instance_id);
             } else if (attr_type == NAN_ATTRIBUTE_CMD_RESP_DATA) {
-                ALOGI("sizeof cmd response data: %d, it.get_len() = %d\n",
+                ALOGI("sizeof cmd response data: %ld, it.get_len() = %d\n",
                         sizeof(nan_hal_resp_t), it.get_len());
                 if (it.get_len() == sizeof(nan_hal_resp_t)) {
                     rsp_vndr_data = (nan_hal_resp_t*)it.get_data();
@@ -3550,8 +3490,6 @@ static const char *NanCmdToString(int cmd)
             C2S(NAN_DATA_PATH_IFACE_UP)
             C2S(NAN_DATA_PATH_SEC_INFO)
             C2S(NAN_VERSION_INFO)
-            C2S(NAN_REQUEST_ENABLE_MERGE)
-
         default:
             return "UNKNOWN_NAN_CMD";
     }
@@ -3902,7 +3840,6 @@ static int dump_NanConfigRequestRequest(NanConfigRequest* msg)
 static int dump_NanPublishRequest(NanPublishRequest* msg)
 {
     ALOGI("%s: Dump NanPublishRequest msg:\n", __func__);
-    u8 i = 0;
     if (msg == NULL) {
         ALOGE("Invalid msg\n");
         return WIFI_ERROR_UNKNOWN;
@@ -4022,7 +3959,6 @@ static int dump_NanSubscribeRequest(NanSubscribeRequest* msg)
 static int dump_NanTransmitFollowupRequest(NanTransmitFollowupRequest* msg)
 {
     ALOGI("%s: Dump NanTransmitFollowupRequest msg:\n", __func__);
-    u8 i = 0;
     if (msg == NULL) {
         ALOGE("Invalid msg\n");
         return WIFI_ERROR_UNKNOWN;
@@ -4211,7 +4147,6 @@ wifi_error nan_publish_cancel_request(transaction_id id,
 {
     wifi_error ret = WIFI_SUCCESS;
     NanDiscEnginePrimitive *cmd;
-    wifi_handle handle = getWifiHandle(iface);
     NanRequestType cmdType = NAN_REQUEST_PUBLISH_CANCEL;
 
     ALOGE("Cancellling publish request %d\n", msg->publish_id);
@@ -4258,7 +4193,6 @@ wifi_error nan_subscribe_cancel_request(transaction_id id,
 {
     wifi_error ret = WIFI_SUCCESS;
     NanDiscEnginePrimitive *cmd;
-    wifi_handle handle = getWifiHandle(iface);
     NanRequestType cmdType = NAN_REQUEST_SUBSCRIBE_CANCEL;
 
     ALOGE("creating new instance + %d\n", msg->subscribe_id);
@@ -4274,36 +4208,12 @@ wifi_error nan_subscribe_cancel_request(transaction_id id,
     return ret;
 }
 
-#ifdef NAN_CLUSTER_MERGE
-/*  Function to send NAN cluster merge enable/disable request to the wifi driver.*/
-wifi_error nan_enable_cluster_merge_request(transaction_id id,
-        wifi_interface_handle iface, NanEnableMergeRequest* msg)
-{
-    wifi_error ret = WIFI_SUCCESS;
-    wifi_handle handle = getWifiHandle(iface);
-    NanRequestType cmdType = NAN_REQUEST_ENABLE_MERGE;
-
-    NanMacControl *cmd = new NanMacControl(iface, id, (void *)msg, cmdType);
-    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
-    cmd->setType(cmdType);
-    cmd->setId(id);
-    cmd->setMsg((void *)msg);
-    ret = (wifi_error)cmd->start();
-    if (ret != WIFI_SUCCESS) {
-        ALOGE("%s :enable nan cluster merge failed in start, error = %d\n", __func__, ret);
-    }
-    cmd->releaseRef();
-
-    return ret;
-}
-#endif /* NAN_CLUSTER_MERGE */
 
 /*  Function to send nan transmit followup Request to the wifi driver.*/
 wifi_error nan_transmit_followup_request(transaction_id id,
         wifi_interface_handle iface, NanTransmitFollowupRequest* msg)
 {
     NanDiscEnginePrimitive *cmd = NULL;
-    wifi_handle handle = getWifiHandle(iface);
     NanRequestType cmdType = NAN_REQUEST_TRANSMIT_FOLLOWUP;
     wifi_error ret = WIFI_SUCCESS;
 
@@ -4330,9 +4240,9 @@ wifi_error nan_stats_request(transaction_id id,
     wifi_handle handle = getWifiHandle(iface);
 
     ALOGI("Nan Stats, halHandle = %p", handle);
-    NanRequestType cmdType = NAN_REQUEST_STATS;
 
 #ifdef NOT_SUPPORTED
+    NanRequestType cmdType = NAN_REQUEST_STATS;
     wifi_error ret = WIFI_SUCCESS;
     NanCommand *cmd = new NanCommand(iface, id, (void *)msg, cmdType);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
@@ -4383,9 +4293,9 @@ wifi_error nan_tca_request(transaction_id id,
     wifi_handle handle = getWifiHandle(iface);
 
     ALOGI("Nan TCA, halHandle = %p", handle);
-    NanRequestType cmdType = NAN_REQUEST_TCA;
 
 #ifdef NOT_SUPPORTED
+    NanRequestType cmdType = NAN_REQUEST_TCA;
     wifi_error ret = WIFI_SUCCESS;
     NanCommand *cmd = new NanCommand(iface, id, (void *)msg, cmdType);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
@@ -5034,7 +4944,6 @@ class NanEventCap : public WifiCommand
 /* To see event prints in console */
 wifi_error nan_event_check_request(transaction_id id, wifi_interface_handle iface)
 {
-    wifi_handle handle = getWifiHandle(iface);
     NanEventCap *cmd = new NanEventCap(iface, id);
     if (cmd == NULL) {
         return WIFI_ERROR_NOT_SUPPORTED;
@@ -5047,7 +4956,6 @@ wifi_error nan_data_interface_create(transaction_id id,
         wifi_interface_handle iface, char* iface_name)
 {
     wifi_error ret = WIFI_SUCCESS;
-    wifi_handle handle = getWifiHandle(iface);
     NAN_DBG_ENTER();
 
     NanRequestType cmdType = NAN_DATA_PATH_IFACE_CREATE;
@@ -5070,7 +4978,6 @@ wifi_error nan_data_interface_delete(transaction_id id,
         wifi_interface_handle iface, char* iface_name)
 {
     wifi_error ret = WIFI_SUCCESS;
-    wifi_handle handle = getWifiHandle(iface);
     NAN_DBG_ENTER();
 
     NanRequestType cmdType = NAN_DATA_PATH_IFACE_DELETE;
@@ -5093,7 +5000,6 @@ wifi_error nan_data_request_initiator(transaction_id id,
         wifi_interface_handle iface, NanDataPathInitiatorRequest* msg)
 {
     wifi_error ret = WIFI_SUCCESS;
-    wifi_handle handle = getWifiHandle(iface);
 
     NAN_DBG_ENTER();
     NanRequestType cmdType;
@@ -5179,7 +5085,6 @@ wifi_error nan_data_indication_response(transaction_id id,
         wifi_interface_handle iface, NanDataPathIndicationResponse* msg)
 {
     wifi_error ret = WIFI_SUCCESS;
-    wifi_handle handle = getWifiHandle(iface);
     NAN_DBG_ENTER();
     NanRequestType cmdType;
     u8 pub_nmi[NAN_MAC_ADDR_LEN] = {0};
@@ -5275,7 +5180,6 @@ wifi_error nan_data_end(transaction_id id,
 {
     wifi_error ret = WIFI_SUCCESS;
     NanDataPathPrimitive *cmd;
-    wifi_handle handle = getWifiHandle(iface);
     NanRequestType cmdType = NAN_DATA_PATH_END;
     NAN_DBG_ENTER();
 

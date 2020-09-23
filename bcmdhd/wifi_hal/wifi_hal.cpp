@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2017 The Android Open Source Project
  *
- * Portions copyright (C) 2019 Broadcom Limited
+ * Portions copyright (C) 2017 Broadcom Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,7 +72,6 @@
 #define POLL_DRIVER_MAX_TIME_MS (10000)
 #define EVENT_BUF_SIZE 2048
 
-static void internal_event_handler(wifi_handle handle, int events);
 static int internal_no_seq_check(nl_msg *msg, void *arg);
 static int internal_valid_message_handler(nl_msg *msg, void *arg);
 static int wifi_get_multicast_id(wifi_handle handle, const char *name, const char *group);
@@ -83,6 +82,8 @@ static wifi_error wifi_start_rssi_monitoring(wifi_request_id id, wifi_interface_
 static wifi_error wifi_stop_rssi_monitoring(wifi_request_id id, wifi_interface_handle iface);
 static wifi_error wifi_set_packet_filter(wifi_interface_handle handle,
                             const u8 *program, u32 len);
+static wifi_error wifi_read_packet_filter(wifi_interface_handle handle, u32 src_offset,
+                            u8 *host_dst, u32 length);
 static wifi_error wifi_get_packet_filter_capabilities(wifi_interface_handle handle,
                 u32 *version, u32 *max_len);
 static wifi_error wifi_configure_nd_offload(wifi_interface_handle iface, u8 enable);
@@ -121,7 +122,8 @@ enum wifi_apf_attr {
 
 enum apf_request_type {
     GET_APF_CAPABILITIES,
-    SET_APF_PROGRAM
+    SET_APF_PROGRAM,
+    READ_APF_PROGRAM
 };
 
 enum wifi_dscp_attr {
@@ -157,25 +159,11 @@ static nl_sock * wifi_create_nl_socket(int port)
 
     wifi_socket_set_local_port(sock, port);
 
-    struct sockaddr *addr = NULL;
-    // ALOGI("sizeof(sockaddr) = %d, sizeof(sockaddr_nl) = %d", sizeof(*addr), sizeof(*addr_nl));
-
-    // ALOGI("Connecting socket");
     if (nl_connect(sock, NETLINK_GENERIC)) {
         ALOGE("Could not connect handle");
         nl_socket_free(sock);
         return NULL;
     }
-
-    // ALOGI("Making socket nonblocking");
-    /*
-    if (nl_socket_set_nonblocking(sock)) {
-        ALOGE("Could make socket non-blocking");
-        nl_socket_free(sock);
-        return NULL;
-    }
-    */
-
     return sock;
 }
 
@@ -261,11 +249,9 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_nan_data_indication_response = nan_data_indication_response;
     fn->wifi_nan_data_end = nan_data_end;
     fn->wifi_set_latency_mode = wifi_set_latency_mode;
-#ifdef NAN_CLUSTER_MERGE
-    fn->wifi_nan_enable_merge_request = nan_enable_cluster_merge_request;
-#endif /* NAN_CLUSTER_MERGE */
     fn->wifi_select_tx_power_scenario = wifi_select_tx_power_scenario;
     fn->wifi_reset_tx_power_scenario = wifi_reset_tx_power_scenario;
+    fn->wifi_read_packet_filter = wifi_read_packet_filter;
     fn->wifi_set_subsystem_restart_handler = wifi_set_subsystem_restart_handler;
     fn->wifi_set_thermal_mitigation_mode = wifi_set_thermal_mitigation_mode;
     fn->wifi_map_dscp_access_category = wifi_map_dscp_access_category;
@@ -439,15 +425,6 @@ wifi_error wifi_initialize(wifi_handle *handle)
             if (result != WIFI_SUCCESS) {
                 ALOGE("wifi_start_hal failed");
             }
-#ifdef FILE_DUMP
-            else {
-                ALOGE("Calling start file dump");
-                result = wifi_start_file_dump(wlan0Handle);
-                if (result != WIFI_SUCCESS) {
-                    ALOGE("wifi_start_file_dump failed");
-                }
-            }
-#endif /* FILE_DUMP */
         }
     } else {
         ALOGI("Not Calling set alert handler as global_iface is NULL");
@@ -551,13 +528,6 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
             }
         }
 
-#ifdef FILE_DUMP
-        ALOGE("Calling stop file dump");
-        result = wifi_stop_file_dump(wlan0Handle);
-        if (result != WIFI_SUCCESS) {
-            ALOGE("wifi_stop_file_dump failed");
-        }
-#endif /* FILE_DUMP */
     } else {
         ALOGE("Not cleaning up hal as global_iface is NULL");
     }
@@ -582,6 +552,7 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
         }
     }
     info->clean_up = true;
+    /* calling internal modules or cleanup */
     wifi_internal_module_cleanup();
     ALOGI("wifi nan internal clean up done");
     pthread_mutex_lock(&info->cb_lock);
@@ -744,8 +715,6 @@ static int internal_valid_message_handler(nl_msg *msg, void *arg)
     // ALOGV("event received %s, vendor_id = 0x%0x", event.get_cmdString(), vendor_id);
     // event.log();
 
-    bool dispatched = false;
-
     pthread_mutex_lock(&info->cb_lock);
 
     for (int i = 0; i < info->num_event_cb; i++) {
@@ -762,9 +731,6 @@ static int internal_valid_message_handler(nl_msg *msg, void *arg)
             nl_recvmsg_msg_cb_t cb_func = cbi->cb_func;
             void *cb_arg = cbi->cb_arg;
             WifiCommand *cmd = (WifiCommand *)cbi->cb_arg;
-            if (cmd != NULL) {
-                cmd->addRef();
-            }
             pthread_mutex_unlock(&info->cb_lock);
             if (cb_func)
                 (*cb_func)(msg, cb_arg);
@@ -817,7 +783,6 @@ public:
         // ALOGI("handling reponse in %s", __func__);
 
         struct nlattr **tb = reply.attributes();
-        struct genlmsghdr *gnlh = reply.header();
         struct nlattr *mcgrp = NULL;
         int i;
 
@@ -1092,6 +1057,7 @@ public:
 class AndroidPktFilterCommand : public WifiCommand {
     private:
         const u8* mProgram;
+        u8* mReadProgram;
         u32 mProgramLen;
         u32* mVersion;
         u32* mMaxLen;
@@ -1117,13 +1083,24 @@ class AndroidPktFilterCommand : public WifiCommand {
             mMaxLen = NULL;
         }
 
+        AndroidPktFilterCommand(wifi_interface_handle handle,
+            u8* host_dst, u32 length)
+            : WifiCommand("AndroidPktFilterCommand", handle, 0),
+                mReadProgram(host_dst), mProgramLen(length),
+                mReqType(READ_APF_PROGRAM)
+        {
+        }
+
     int createRequest(WifiRequest& request) {
         if (mReqType == SET_APF_PROGRAM) {
             ALOGI("\n%s: APF set program request\n", __FUNCTION__);
             return createSetPktFilterRequest(request);
         } else if (mReqType == GET_APF_CAPABILITIES) {
             ALOGI("\n%s: APF get capabilities request\n", __FUNCTION__);
-            return createGetPktFilterCapabilitesRequest(request);
+	    return createGetPktFilterCapabilitesRequest(request);
+        } else if (mReqType == READ_APF_PROGRAM) {
+            ALOGI("\n%s: APF read packet filter request\n", __FUNCTION__);
+            return createReadPktFilterRequest(request);
         } else {
             ALOGE("\n%s Unknown APF request\n", __FUNCTION__);
             return WIFI_ERROR_NOT_SUPPORTED;
@@ -1164,6 +1141,16 @@ exit:   request.attr_end(data);
         nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
         request.attr_end(data);
         return result;
+    }
+
+    int createReadPktFilterRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, APF_SUBCMD_READ_FILTER);
+            if (result < 0) {
+                return result;
+            }
+            nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+            request.attr_end(data);
+            return result;
     }
 
     int start() {
@@ -1220,6 +1207,18 @@ exit:   request.attr_end(data);
                 } else {
                     ALOGE("Ignoring invalid attribute type = %d, size = %d",
                             it.get_type(), it.get_len());
+                }
+            }
+        } else if (mReqType == READ_APF_PROGRAM) {
+            ALOGD("Read packet filter, mProgramLen = %d\n", mProgramLen);
+            for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
+                if (it.get_type() == APF_ATTRIBUTE_PROGRAM) {
+                    u8 *buffer = NULL;
+                    buffer = (u8 *)it.get_data();
+                    memcpy(mReadProgram, buffer, mProgramLen);
+                } else if (it.get_type() == APF_ATTRIBUTE_PROGRAM_LEN) {
+                    int apf_length = it.get_u32();
+                    ALOGD("apf program length = %d\n", apf_length);
                 }
             }
         }
@@ -1585,7 +1584,6 @@ static wifi_error wifi_stop_rssi_monitoring(wifi_request_id id, wifi_interface_h
     if(id == -1) {
         wifi_rssi_event_handler handler;
         s8 max_rssi = 0, min_rssi = 0;
-        wifi_handle handle = getWifiHandle(iface);
         memset(&handler, 0, sizeof(handler));
         SetRSSIMonitorCommand *cmd = new SetRSSIMonitorCommand(id, iface,
                                                     max_rssi, min_rssi, handler);
@@ -1622,6 +1620,19 @@ static wifi_error wifi_set_packet_filter(wifi_interface_handle handle,
     return result;
 }
 
+static wifi_error wifi_read_packet_filter(wifi_interface_handle handle,
+    u32 src_offset, u8 *host_dst, u32 length)
+{
+    ALOGD("Read APF program, halHandle = %p, length = %d\n", handle, length);
+    AndroidPktFilterCommand *cmd = new AndroidPktFilterCommand(handle, host_dst, length);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = (wifi_error)cmd->start();
+    if (result == WIFI_SUCCESS) {
+        ALOGI("Read APF program success\n");
+    }
+    cmd->releaseRef();
+    return result;
+}
 static wifi_error wifi_configure_nd_offload(wifi_interface_handle handle, u8 enable)
 {
     SetNdoffloadCommand command(handle, enable);
