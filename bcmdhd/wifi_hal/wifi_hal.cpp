@@ -731,6 +731,9 @@ static int internal_valid_message_handler(nl_msg *msg, void *arg)
             nl_recvmsg_msg_cb_t cb_func = cbi->cb_func;
             void *cb_arg = cbi->cb_arg;
             WifiCommand *cmd = (WifiCommand *)cbi->cb_arg;
+            if (cmd != NULL) {
+                cmd->addRef();
+            }
             pthread_mutex_unlock(&info->cb_lock);
             if (cb_func)
                 (*cb_func)(msg, cb_arg);

@@ -276,6 +276,10 @@ public:
         return mType;
     }
 
+    virtual void addRef() {
+        int refs = __sync_add_and_fetch(&mRefs, 1);
+    }
+
     virtual void releaseRef() {
         int refs = __sync_sub_and_fetch(&mRefs, 1);
         if (refs == 0) {
