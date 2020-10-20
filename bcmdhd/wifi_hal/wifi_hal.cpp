@@ -127,10 +127,10 @@ enum apf_request_type {
 };
 
 enum wifi_dscp_attr {
-    DSCP_ATTRIBUTE_INVALID = 0,
-    DSCP_ATTRIBUTE_START = 1,
-    DSCP_ATTRIBUTE_END = 2,
-    DSCP_ATTRIBUTE_AC = 3,
+    DSCP_ATTRIBUTE_INVALID	= 0,
+    DSCP_ATTRIBUTE_START	= 1,
+    DSCP_ATTRIBUTE_END		= 2,
+    DSCP_ATTRIBUTE_AC		= 3,
     /* Add more attributes here */
     DSCP_ATTRIBUTE_MAX
 };

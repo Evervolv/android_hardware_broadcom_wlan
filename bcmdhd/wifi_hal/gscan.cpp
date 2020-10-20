@@ -1959,11 +1959,11 @@ public:
         ALOGI("%02x:%02x:%02x:%02x:%02x:%02x ", mResult->bssid[0], mResult->bssid[1],
                 mResult->bssid[2], mResult->bssid[3], mResult->bssid[4], mResult->bssid[5]);
 
-	ALOGI("rssi:%d\t", mResult->rssi);
-	ALOGI("channel:%d\t", mResult->channel);
-	ALOGI("ts:0x%jx\t", mResult->ts);
-	ALOGI("rtt:0x%jx\t", mResult->rtt);
-	ALOGI("rtt_sd:0x%jx\n", mResult->rtt_sd);
+        ALOGI("rssi:%d\t", mResult->rssi);
+        ALOGI("channel:%d\t", mResult->channel);
+        ALOGI("ts:0x%jx\t", mResult->ts);
+        ALOGI("rtt:0x%jx\t", mResult->rtt);
+        ALOGI("rtt_sd:0x%jx\n", mResult->rtt_sd);
 
         if(*mHandler.on_passpoint_network_found)
             (*mHandler.on_passpoint_network_found)(id(), networkId, mResult, anqp_len, anqp);

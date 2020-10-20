@@ -2190,10 +2190,10 @@ class NanDataPathPrimitive : public WifiCommand
             case NAN_DP_INTERFACE_DELETE:
             case NAN_DP_INITIATOR_RESPONSE:
             case NAN_DP_RESPONDER_RESPONSE:
-            case NAN_DP_END: 
+            case NAN_DP_END:
                 valid = true;
                 break;
-            default: 
+            default:
                 ALOGE("NanDataPathPrmitive::Unknown cmd Response: %d\n", response_type);
                 break;
         }
@@ -3256,12 +3256,17 @@ class NanMacControl : public WifiCommand
                 ALOGE("%s: dp_primitive is no more available\n", __func__);
             }
             return NL_SKIP;
-        } else {
-            if (is_cmd_response(event_id)) {
-                ALOGE("Handling cmd response asynchronously\n");
-                handleAsyncResponse(rsp_vndr_data);
-            }
-        }
+	} else {
+		if (is_cmd_response(event_id)) {
+			ALOGE("Handling cmd response asynchronously\n");
+			if (rsp_vndr_data != NULL) {
+				handleAsyncResponse(rsp_vndr_data);
+			} else {
+				ALOGE("Wrong response data, rsp_vndr_data is NULL\n");
+				return NL_SKIP;
+			}
+		}
+	}
 
         switch(event_id) {
             case NAN_EVENT_DE_EVENT:
@@ -4207,7 +4212,6 @@ wifi_error nan_subscribe_cancel_request(transaction_id id,
 
     return ret;
 }
-
 
 /*  Function to send nan transmit followup Request to the wifi driver.*/
 wifi_error nan_transmit_followup_request(transaction_id id,
