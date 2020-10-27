@@ -121,9 +121,10 @@ typedef enum {
 } PktFateReqType;
 
 enum wake_stat_attributes {
-    WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT,
-    WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE,
-    WAKE_STAT_ATTRIBUTE_CMD_EVENT_COUNT,
+    WAKE_STAT_ATTRIBUTE_INVALID,
+    WAKE_STAT_ATTRIBUTE_TOTAL,
+    WAKE_STAT_ATTRIBUTE_WAKE,
+    WAKE_STAT_ATTRIBUTE_COUNT,
     WAKE_STAT_ATTRIBUTE_CMD_COUNT_USED,
     WAKE_STAT_ATTRIBUTE_TOTAL_DRIVER_FW,
     WAKE_STAT_ATTRIBUTE_DRIVER_FW_WAKE,
@@ -140,8 +141,9 @@ enum wake_stat_attributes {
     WAKE_STAT_ATTRIBUTE_RX_ICMP6_NS,
     WAKE_STAT_ATTRIBUTE_IPV4_RX_MULTICAST_ADD_CNT,
     WAKE_STAT_ATTRIBUTE_IPV6_RX_MULTICAST_ADD_CNT,
-    WAKE_STAT_ATTRIBUTE_OTHER__RX_MULTICAST_ADD_CNT,
-    WAKE_STAT_ATTRIBUTE_RX_MULTICAST_PKT_INFO
+    WAKE_STAT_ATTRIBUTE_OTHER_RX_MULTICAST_ADD_CNT,
+    WAKE_STAT_ATTRIBUTE_RX_MULTICAST_PKT_INFO,
+    WAKE_STAT_ATTRIBUTE_MAX
 };
 
 typedef enum {
@@ -1511,7 +1513,7 @@ class GetWakeReasonCountCommand : public WifiCommand {
                     mWakeReasonCnt->total_driver_fw_local_wake =
                         it.get_u32();
                     break;
-                case WAKE_STAT_ATTRIBUTE_TOTAL_CMD_EVENT:
+                case WAKE_STAT_ATTRIBUTE_TOTAL:
                     mWakeReasonCnt->total_cmd_event_wake =
                         it.get_u32();
                     break;
@@ -1519,7 +1521,7 @@ class GetWakeReasonCountCommand : public WifiCommand {
                     mWakeReasonCnt->cmd_event_wake_cnt_used =
                         it.get_u32();
                     break;
-                case WAKE_STAT_ATTRIBUTE_CMD_EVENT_WAKE:
+                case WAKE_STAT_ATTRIBUTE_WAKE:
                     memcpy(mCmdEventWakeCount, it.get_data(),
                             (mWakeReasonCnt->cmd_event_wake_cnt_used * sizeof(int)));
                     break;
@@ -1567,7 +1569,7 @@ class GetWakeReasonCountCommand : public WifiCommand {
                     mWakeReasonCnt->rx_multicast_wake_pkt_info.ipv6_rx_multicast_addr_cnt =
                         it.get_u32();
                     break;
-                case WAKE_STAT_ATTRIBUTE_OTHER__RX_MULTICAST_ADD_CNT:
+                case WAKE_STAT_ATTRIBUTE_OTHER_RX_MULTICAST_ADD_CNT:
                     mWakeReasonCnt->rx_multicast_wake_pkt_info.other_rx_multicast_addr_cnt =
                         it.get_u32();
                     break;
