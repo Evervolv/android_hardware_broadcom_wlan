@@ -577,7 +577,6 @@ public:
                         memcpy(rtt_result, it2.get_data(), it2.get_len());
                         result_len -= sizeof(wifi_rtt_result);
                         if (result_len > 0) {
-                            result_len -= sizeof(wifi_rtt_result);
                             dot11_rm_ie_t *ele_1;
                             dot11_rm_ie_t *ele_2;
                             /* The result has LCI or LCR element */
