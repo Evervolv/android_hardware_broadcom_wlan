@@ -1673,7 +1673,7 @@ public:
         }
 
         if ((mScenario <= WIFI_POWER_SCENARIO_INVALID) ||
-           (mScenario > WIFI_POWER_SCENARIO_ON_BODY_BT)) {
+           (mScenario >= SAR_CONFIG_SCENARIO_COUNT)) {
             ALOGE("Unsupported tx power value:%d\n", mScenario);
             return WIFI_ERROR_NOT_SUPPORTED;
         }

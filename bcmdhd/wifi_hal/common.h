@@ -55,6 +55,7 @@ const uint32_t BRCM_OUI =  0x001018;
 #define NMRSTR "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x"
 #define NAN_MASTER_RANK_LEN 8
 
+#define SAR_CONFIG_SCENARIO_COUNT      100
 
 /*
  This enum defines ranges for various commands; commands themselves
