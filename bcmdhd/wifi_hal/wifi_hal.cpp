@@ -53,6 +53,8 @@
 #include "rtt.h"
 #include "brcm_version.h"
 #include <stdio.h>
+#include <string>
+#include <vector>
 /*
  BUGBUG: normally, libnl allocates ports for all connections it makes; but
  being a static library, it doesn't really know how many other netlink connections
@@ -63,6 +65,7 @@
 
 #define WIFI_HAL_CMD_SOCK_PORT       644
 #define WIFI_HAL_EVENT_SOCK_PORT     645
+#define MAX_VIRTUAL_IFACES           3
 
 /*
  * Defines for wifi_wait_for_driver_ready()
@@ -71,6 +74,7 @@
 #define POLL_DRIVER_DURATION_US (100000)
 #define POLL_DRIVER_MAX_TIME_MS (10000)
 #define EVENT_BUF_SIZE 2048
+#define C2S(x)  case x: return #x;
 
 static int internal_no_seq_check(nl_msg *msg, void *arg);
 static int internal_valid_message_handler(nl_msg *msg, void *arg);
@@ -88,6 +92,7 @@ static wifi_error wifi_get_packet_filter_capabilities(wifi_interface_handle hand
                 u32 *version, u32 *max_len);
 static wifi_error wifi_configure_nd_offload(wifi_interface_handle iface, u8 enable);
 
+static void wifi_cleanup_dynamic_ifaces(wifi_handle handle);
 typedef enum wifi_attr {
     ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET,
     ANDR_WIFI_ATTRIBUTE_FEATURE_SET,
@@ -165,6 +170,18 @@ static nl_sock * wifi_create_nl_socket(int port)
         return NULL;
     }
     return sock;
+}
+
+static const char *IfaceTypeToString(wifi_interface_type iface_type)
+{
+    switch (iface_type) {
+        C2S(WIFI_INTERFACE_TYPE_STA)
+        C2S(WIFI_INTERFACE_TYPE_AP)
+        C2S(WIFI_INTERFACE_TYPE_P2P)
+        C2S(WIFI_INTERFACE_TYPE_NAN)
+    default:
+        return "UNKNOWN_WIFI_INTERFACE_TYPE";
+    }
 }
 
 /*initialize function pointer table with Broadcom HHAL API*/
@@ -256,6 +273,8 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_set_thermal_mitigation_mode = wifi_set_thermal_mitigation_mode;
     fn->wifi_map_dscp_access_category = wifi_map_dscp_access_category;
     fn->wifi_reset_dscp_mapping = wifi_reset_dscp_mapping;
+    fn->wifi_virtual_interface_create = wifi_virtual_interface_create;
+    fn->wifi_virtual_interface_delete = wifi_virtual_interface_delete;
 
     return WIFI_SUCCESS;
 }
@@ -601,6 +620,9 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
         }
         WifiCommand *cmd = (WifiCommand *)cbi->cb_arg;
         ALOGE("Leaked command %p", cmd);
+    }
+    if (!get_halutil_mode()) {
+        wifi_cleanup_dynamic_ifaces(handle);
     }
     pthread_mutex_unlock(&info->cb_lock);
     internal_cleaned_up_handler(handle);
@@ -1420,7 +1442,11 @@ static bool is_wifi_interface(const char *name)
 
 static int get_interface(const char *name, interface_info *info)
 {
-    strlcpy(info->name, name, sizeof(info->name));
+    int size = 0;
+    size = strlcpy(info->name, name, sizeof(info->name));
+    if (size >= sizeof(info->name)) {
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
     info->id = if_nametoindex(name);
     // ALOGI("found an interface : %s, id = %d", name, info->id);
     return WIFI_SUCCESS;
@@ -1454,7 +1480,9 @@ wifi_error wifi_init_interfaces(wifi_handle handle)
     if (d == 0)
         return WIFI_ERROR_UNKNOWN;
 
-    info->interfaces = (interface_info **)malloc(sizeof(interface_info *) * n);
+    /* Have place holder for 3 virtual interfaces */
+    n += MAX_VIRTUAL_IFACES;
+    info->interfaces = (interface_info **)calloc(n, sizeof(interface_info *) * n);
     if (!info->interfaces) {
         info->num_interfaces = 0;
         closedir(d);
@@ -1473,10 +1501,12 @@ wifi_error wifi_init_interfaces(wifi_handle handle)
                 closedir(d);
                 return WIFI_ERROR_OUT_OF_MEMORY;
             }
+            memset(ifinfo, 0, sizeof(interface_info));
             if (get_interface(de->d_name, ifinfo) != WIFI_SUCCESS) {
-                free(ifinfo);
                 continue;
             }
+            /* Mark as static iface */
+            ifinfo->is_virtual = false;
             ifinfo->handle = handle;
             info->interfaces[i] = ifinfo;
             i++;
@@ -1485,7 +1515,8 @@ wifi_error wifi_init_interfaces(wifi_handle handle)
 
     closedir(d);
 
-    info->num_interfaces = n;
+    info->num_interfaces = i;
+    info->max_num_interfaces = n;
     return WIFI_SUCCESS;
 }
 
@@ -1499,6 +1530,68 @@ wifi_error wifi_get_ifaces(wifi_handle handle, int *num, wifi_interface_handle *
     return WIFI_SUCCESS;
 }
 
+wifi_error wifi_add_iface_hal_info(wifi_handle handle, const char* ifname)
+{
+    hal_info *info = NULL;
+    int i = 0;
+
+    info = (hal_info *)handle;
+    if (info != NULL) {
+        ALOGE("Could not find info\n");
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    ALOGI("%s: add interface_info for iface: %s\n", __FUNCTION__, ifname);
+    if (info->num_interfaces == MAX_VIRTUAL_IFACES) {
+        ALOGE("No space. max limit reached for virtual interfaces %d\n", info->num_interfaces);
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+
+    interface_info *ifinfo = (interface_info *)malloc(sizeof(interface_info));
+    if (!ifinfo) {
+        free(info->interfaces);
+        info->num_interfaces = 0;
+        return WIFI_ERROR_OUT_OF_MEMORY;
+    }
+
+    ifinfo->handle = handle;
+    while (i < info->max_num_interfaces) {
+        if (info->interfaces[i] == NULL) {
+            if (get_interface(ifname, ifinfo) != WIFI_SUCCESS) {
+                continue;
+            }
+            ifinfo->is_virtual = true;
+            info->interfaces[i] = ifinfo;
+            info->num_interfaces++;
+            ALOGI("%s: Added iface: %s at the index %d\n", __FUNCTION__, ifname, i);
+            break;
+        }
+        i++;
+    }
+    return WIFI_SUCCESS;
+}
+
+wifi_error wifi_clear_iface_hal_info(wifi_handle handle, const char* ifname)
+{
+    hal_info *info = (hal_info *)handle;
+    int i = 0;
+
+    ALOGI("%s: clear hal info for iface: %s\n", __FUNCTION__, ifname);
+    while (i < info->max_num_interfaces) {
+        if ((info->interfaces[i] != NULL) &&
+            strncmp(info->interfaces[i]->name, ifname,
+            sizeof(info->interfaces[i]->name)) == 0) {
+            free(info->interfaces[i]);
+            info->interfaces[i] = NULL;
+            info->num_interfaces--;
+            ALOGI("%s: Cleared the index = %d for iface: %s\n", __FUNCTION__, i, ifname);
+            break;
+        }
+        i++;
+    }
+    return WIFI_SUCCESS;
+}
+
 wifi_interface_handle wifi_get_wlan_interface(wifi_handle info, wifi_interface_handle *ifaceHandles, int numIfaceHandles)
 {
     char buf[EVENT_BUF_SIZE];
@@ -1509,7 +1602,7 @@ wifi_interface_handle wifi_get_wlan_interface(wifi_handle info, wifi_interface_h
     }
     for (int i = 0; i < numIfaceHandles; i++) {
         if (wifi_get_iface_name(ifaceHandles[i], buf, sizeof(buf)) == WIFI_SUCCESS) {
-            if (strcmp(buf, "wlan0") == 0) {
+            if (strncmp(buf, "wlan0", 5) == 0) {
                 ALOGI("found interface %s\n", buf);
                 wlan0Handle = ifaceHandles[i];
                 return wlan0Handle;
@@ -1965,4 +2058,223 @@ wifi_error wifi_reset_dscp_mapping(wifi_handle handle)
     return result;
 }
 
+class VirtualIfaceConfig : public WifiCommand {
+    const char *mIfname;
+    nl80211_iftype mType;
+    u32 mwlan0_id;
+
+public:
+    VirtualIfaceConfig(wifi_interface_handle handle, const char* ifname,
+        nl80211_iftype iface_type, u32 wlan0_id)
+    : WifiCommand("VirtualIfaceConfig", handle, 0), mIfname(ifname), mType(iface_type),
+        mwlan0_id(wlan0_id)
+    {
+        mIfname = ifname;
+        mType = iface_type;
+        mwlan0_id = wlan0_id;
+    }
+    int createRequest(WifiRequest& request, const char* ifname,
+        nl80211_iftype iface_type, u32 wlan0_id) {
+        ALOGD("add ifname = %s, iface_type = %d, wlan0_id = %d",
+        ifname, iface_type, wlan0_id);
+
+        int result = request.create(NL80211_CMD_NEW_INTERFACE);
+        if (result < 0) {
+            ALOGE("failed to create NL80211_CMD_NEW_INTERFACE; result = %d", result);
+            return result;
+        }
+
+        result = request.put_u32(NL80211_ATTR_IFINDEX, wlan0_id);
+        if (result < 0) {
+            ALOGE("failed to put NL80211_ATTR_IFINDEX; result = %d", result);
+            return result;
+        }
+
+        result = request.put_string(NL80211_ATTR_IFNAME, ifname);
+        if (result < 0) {
+            ALOGE("failed to put NL80211_ATTR_IFNAME = %s; result = %d", ifname, result);
+            return result;
+        }
+
+        result = request.put_u32(NL80211_ATTR_IFTYPE, iface_type);
+        if (result < 0) {
+            ALOGE("failed to put NL80211_ATTR_IFTYPE = %d; result = %d", iface_type, result);
+            return result;
+        }
+        return WIFI_SUCCESS;
+    }
+
+    int deleteRequest(WifiRequest& request, const char* ifname) {
+        ALOGD("delete ifname = %s\n", ifname);
+        int result = request.create(NL80211_CMD_DEL_INTERFACE);
+        if (result < 0) {
+            ALOGE("failed to create NL80211_CMD_DEL_INTERFACE; result = %d", result);
+            return result;
+        }
+        result = request.put_u32(NL80211_ATTR_IFINDEX, if_nametoindex(ifname));
+        if (result < 0) {
+            ALOGE("failed to put NL80211_ATTR_IFINDEX = %d; result = %d",
+                if_nametoindex(ifname), result);
+            return result;
+        }
+        result = request.put_string(NL80211_ATTR_IFNAME, ifname);
+        if (result < 0) {
+            ALOGE("failed to put NL80211_ATTR_IFNAME = %s; result = %d", ifname, result);
+            return result;
+        }
+        return WIFI_SUCCESS;
+    }
+
+    int createIface() {
+        ALOGE("Creating virtual interface");
+        WifiRequest request(familyId(), ifaceId());
+        int result = createRequest(request, mIfname, mType, mwlan0_id);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to create virtual iface request; result = %d\n", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to get the virtual iface create response; result = %d\n", result);
+            return result;
+        }
+        ALOGE("Created virtual interface");
+        return WIFI_SUCCESS;
+    }
+
+    int deleteIface() {
+        ALOGD("Deleting virtual interface");
+        WifiRequest request(familyId(), ifaceId());
+        int result = deleteRequest(request, mIfname);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to create virtual iface delete request; result = %d\n", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to get response of delete virtual interface; result = %d\n", result);
+            return result;
+        }
+        return WIFI_SUCCESS;
+    }
+protected:
+    virtual int handleResponse(WifiEvent& reply) {
+         ALOGD("Request complete!");
+        /* Nothing to do on response! */
+        return NL_SKIP;
+    }
+};
+
+static std::vector<std::string> added_ifaces;
+
+static void wifi_cleanup_dynamic_ifaces(wifi_handle handle)
+{
+    int len = added_ifaces.size();
+    while (len--) {
+        wifi_virtual_interface_delete(handle, added_ifaces.front().c_str());
+    }
+    added_ifaces.clear();
+}
+
+wifi_error wifi_virtual_interface_create(wifi_handle handle, const char* ifname,
+        wifi_interface_type iface_type)
+{
+    int numIfaceHandles = 0;
+    wifi_error ret = WIFI_SUCCESS;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+    nl80211_iftype type = NL80211_IFTYPE_UNSPECIFIED;
+    u32 wlan0_id = if_nametoindex("wlan0");
+
+    if (!handle || !wlan0_id) {
+        ALOGE("%s: Error wifi_handle NULL or wlan0 not present\n", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    /* Do not create interface if already exist. */
+    if (if_nametoindex(ifname)) {
+        ALOGD("%s: if_nametoindex(%s) = %d already exists, skip create \n",
+            __FUNCTION__, ifname, if_nametoindex(ifname));
+        return WIFI_SUCCESS;
+    }
+
+    ALOGD("%s: ifname name = %s, type = %s\n", __FUNCTION__, ifname,
+        IfaceTypeToString(iface_type));
+
+    switch (iface_type) {
+        case WIFI_INTERFACE_TYPE_STA:
+            type = NL80211_IFTYPE_STATION;
+            break;
+        case WIFI_INTERFACE_TYPE_AP:
+            type = NL80211_IFTYPE_AP;
+            break;
+        case WIFI_INTERFACE_TYPE_P2P:
+            type = NL80211_IFTYPE_P2P_DEVICE;
+            break;
+        case WIFI_INTERFACE_TYPE_NAN:
+            type = NL80211_IFTYPE_NAN;
+            break;
+        default:
+            ALOGE("%s: Wrong interface type %u\n", __FUNCTION__, iface_type);
+            return WIFI_ERROR_UNKNOWN;
+    }
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+    VirtualIfaceConfig command(wlan0Handle, ifname, type, wlan0_id);
+
+    ret = (wifi_error)command.createIface();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: Iface add Error:%d", __FUNCTION__,ret);
+        return ret;
+    }
+    /* Update dynamic interface list */
+    added_ifaces.push_back(std::string(ifname));
+    ret = wifi_add_iface_hal_info((wifi_handle)handle, ifname);
+    return ret;
+}
+
+wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname)
+{
+    int numIfaceHandles = 0;
+    int i = 0;
+    wifi_error ret = WIFI_SUCCESS;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+    hal_info *info = (hal_info *)handle;
+    u32 wlan0_id = if_nametoindex("wlan0");
+
+    if (!handle || !wlan0_id) {
+        ALOGE("%s: Error wifi_handle NULL or wlan0 not present\n", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    while (i < info->max_num_interfaces) {
+        if (info->interfaces[i] != NULL &&
+            strncmp(info->interfaces[i]->name,
+            ifname, sizeof(info->interfaces[i]->name)) == 0) {
+            if (info->interfaces[i]->is_virtual == false) {
+                ALOGI("%s: %s is static iface, skip delete\n",
+                    __FUNCTION__, ifname);
+                    return WIFI_SUCCESS;
+        }
+    }
+        i++;
+    }
+
+    ALOGD("%s: iface name=%s\n", __FUNCTION__, ifname);
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+    VirtualIfaceConfig command(wlan0Handle, ifname, (nl80211_iftype)0, 0);
+    ret = (wifi_error)command.deleteIface();
+    if (ret != WIFI_SUCCESS) {
+        ALOGE("%s: Iface delete Error:%d", __FUNCTION__,ret);
+        return ret;
+    }
+    /* Update dynamic interface list */
+    added_ifaces.erase(std::remove(added_ifaces.begin(), added_ifaces.end(), std::string(ifname)),
+        added_ifaces.end());
+    ret = wifi_clear_iface_hal_info((wifi_handle)handle, ifname);
+    return ret;
+}
 /////////////////////////////////////////////////////////////////////////////
