@@ -394,6 +394,7 @@ static int is_de_event(int cmd) {
         case NAN_EVENT_FOLLOWUP:
         case NAN_EVENT_TRANSMIT_FOLLOWUP_IND:
         case NAN_EVENT_PUBLISH_REPLIED_IND:
+        case NAN_EVENT_MATCH_EXPIRY:
             is_de_evt = true;
             break;
         default:
@@ -539,6 +540,30 @@ class NanHandle
 
 };
 
+void HandleExpiryEvent(nan_hal_info_t info, nlattr *vendor_data) {
+    ALOGI("Received NAN_EVENT_MATCH_EXPIRY\n");
+    u16 attr_type;
+    NanMatchExpiredInd expired_event;
+    memset(&expired_event, 0, sizeof(NanMatchExpiredInd));
+
+    for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
+        attr_type = it.get_type();
+        if (attr_type == NAN_ATTRIBUTE_SUBSCRIBE_ID) {
+            expired_event.publish_subscribe_id = it.get_u16();
+            ALOGI("pub_sub id = %u\n",
+            expired_event.publish_subscribe_id);
+        } else if (attr_type == NAN_ATTRIBUTE_PUBLISH_ID) {
+            expired_event.requestor_instance_id = it.get_u32();
+            ALOGI("req_inst id = %u\n", expired_event.requestor_instance_id);
+       }
+    }
+
+    if (expired_event.requestor_instance_id && expired_event.publish_subscribe_id) {
+        GET_NAN_HANDLE(info)->mHandlers.EventMatchExpired(&expired_event);
+    } else {
+        ALOGE("Invalid values for notifying the expired event, dropping the event\n");
+    }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 class NanDiscEnginePrimitive : public WifiCommand
@@ -1630,7 +1655,9 @@ class NanDiscEnginePrimitive : public WifiCommand
 
                 GET_NAN_HANDLE(info)->mHandlers.EventSubscribeTerminated(&sub_term_event);
                 break;
-
+            case NAN_EVENT_MATCH_EXPIRY:
+                HandleExpiryEvent(info, vendor_data);
+                break;
             case NAN_EVENT_FOLLOWUP:
                 NanFollowupInd followup_event;
                 memset(&followup_event, 0, sizeof(NanFollowupInd));
@@ -3395,6 +3422,7 @@ class NanMacControl : public WifiCommand
             unregisterVendorHandler(GOOGLE_OUI, i);
         }
         unregisterVendorHandler(GOOGLE_OUI, NAN_ASYNC_RESPONSE_DISABLED);
+        unregisterVendorHandler(GOOGLE_OUI, NAN_EVENT_MATCH_EXPIRY);
     }
     void registerNanVendorEvents()
     {
@@ -3403,6 +3431,7 @@ class NanMacControl : public WifiCommand
             registerVendorHandler(GOOGLE_OUI, i);
         }
         registerVendorHandler(GOOGLE_OUI, NAN_ASYNC_RESPONSE_DISABLED);
+        registerVendorHandler(GOOGLE_OUI, NAN_EVENT_MATCH_EXPIRY);
     }
 };
 
@@ -4467,6 +4496,7 @@ class NanEventCap : public WifiCommand
                 unregisterVendorHandler(GOOGLE_OUI, i);
             }
             unregisterVendorHandler(GOOGLE_OUI, NAN_ASYNC_RESPONSE_DISABLED);
+            unregisterVendorHandler(GOOGLE_OUI, NAN_EVENT_MATCH_EXPIRY);
         }
         void registerNanVendorEvents()
         {
@@ -4475,6 +4505,7 @@ class NanEventCap : public WifiCommand
                 registerVendorHandler(GOOGLE_OUI, i);
             }
             registerVendorHandler(GOOGLE_OUI, NAN_ASYNC_RESPONSE_DISABLED);
+            registerVendorHandler(GOOGLE_OUI, NAN_EVENT_MATCH_EXPIRY);
         }
 
         int handleEvent(WifiEvent& event) {
@@ -4704,6 +4735,9 @@ class NanEventCap : public WifiCommand
                     GET_NAN_HANDLE(info)->mHandlers.EventSubscribeTerminated(&sub_term_event);
                     break;
                 }
+                case NAN_EVENT_MATCH_EXPIRY:
+                    HandleExpiryEvent(info, vendor_data);
+                    break;
                 case NAN_EVENT_FOLLOWUP: {
                     NanFollowupInd followup_event;
                     memset(&followup_event, 0, sizeof(NanFollowupInd));
