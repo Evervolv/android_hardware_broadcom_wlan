@@ -115,6 +115,10 @@ typedef enum {
     ANDROID_NL80211_SUBCMD_DSCP_RANGE_START =	0x2000,
     ANDROID_NL80211_SUBCMD_DSCP_RANGE_END   =	0x20FF,
 
+    /* define all Channel Avoidance related commands between 0x2100 and 0x211F */
+    ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START =    0x2100,
+    ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_END   =    0x211F,
+
     /* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -187,6 +191,7 @@ typedef enum {
     WIFI_SUBCMD_THERMAL_MITIGATION = ANDROID_NL80211_SUBCMD_MITIGATION_RANGE_START,
     DSCP_SUBCMD_SET_TABLE = ANDROID_NL80211_SUBCMD_DSCP_RANGE_START,
     DSCP_SUBCMD_RESET_TABLE,			    	/* 0x2001 */
+    CHAVOID_SUBCMD_SET_CONFIG = ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START,
 } WIFI_SUB_COMMAND;
 
 typedef enum {
@@ -351,6 +356,8 @@ wifi_error wifi_get_wake_reason_stats(wifi_interface_handle handle,
 wifi_error wifi_virtual_interface_create(wifi_handle handle, const char* ifname,
         wifi_interface_type iface_type);
 wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname);
+wifi_error wifi_set_coex_unsafe_channels(wifi_handle handle, u32 num_channels,
+                                         wifi_coex_unsafe_channel channels[], u32 restrictions);
 void set_hautil_mode(bool halutil_mode);
 bool get_halutil_mode();
 

@@ -145,6 +145,18 @@ enum wifi_dscp_request_type {
     RESET_DSCP_TABLE
 };
 
+enum wifi_chavoid_attr {
+    CHAVOID_ATTRIBUTE_INVALID   = 0,
+    CHAVOID_ATTRIBUTE_CNT       = 1,
+    CHAVOID_ATTRIBUTE_CONFIG    = 2,
+    CHAVOID_ATTRIBUTE_BAND      = 3,
+    CHAVOID_ATTRIBUTE_CHANNEL   = 4,
+    CHAVOID_ATTRIBUTE_PWRCAP    = 5,
+    CHAVOID_ATTRIBUTE_MANDATORY = 6,
+    /* Add more attributes here */
+    CHAVOID_ATTRIBUTE_MAX
+};
+
 /* Initialize/Cleanup */
 
 void wifi_socket_set_local_port(struct nl_sock *sock, uint32_t port)
@@ -275,6 +287,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_reset_dscp_mapping = wifi_reset_dscp_mapping;
     fn->wifi_virtual_interface_create = wifi_virtual_interface_create;
     fn->wifi_virtual_interface_delete = wifi_virtual_interface_delete;
+    fn->wifi_set_coex_unsafe_channels = wifi_set_coex_unsafe_channels;
 
     return WIFI_SUCCESS;
 }
@@ -1217,11 +1230,11 @@ exit:   request.attr_end(data);
             return NL_SKIP;
         }
         if( mReqType == SET_APF_PROGRAM) {
-            ALOGD("Response recieved for set packet filter command\n");
+            ALOGD("Response received for set packet filter command\n");
         } else if (mReqType == GET_APF_CAPABILITIES) {
             *mVersion = 0;
             *mMaxLen = 0;
-            ALOGD("Response recieved for get packet filter capabilities command\n");
+            ALOGD("Response received for get packet filter capabilities command\n");
             for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
                 if (it.get_type() == APF_ATTRIBUTE_VERSION) {
                     *mVersion = it.get_u32();
@@ -1251,7 +1264,7 @@ exit:   request.attr_end(data);
     }
 
     int handleEvent(WifiEvent& event) {
-        /* No Event to recieve for APF commands */
+        /* No Event to receive for APF commands */
         return NL_SKIP;
     }
 };
@@ -1903,6 +1916,136 @@ wifi_error wifi_set_thermal_mitigation_mode(wifi_handle handle,
 }
 
 /////////////////////////////////////////////////////////////////////////////
+
+class ChAvoidCommand : public WifiCommand {
+    private:
+        u32 mNumParams;
+        wifi_coex_unsafe_channel *chavoidParams;
+        u32 mMandatory;
+
+    public:
+        ChAvoidCommand(wifi_interface_handle handle,
+            u32 num, wifi_coex_unsafe_channel channels[], u32 mandatory)
+            : WifiCommand("ChAvoidCommand", handle, 0),
+                mNumParams(num), chavoidParams(channels), mMandatory(mandatory)
+        {
+        }
+
+    int createRequest(WifiRequest& request) {
+        return createSetChAvoidRequest(request);
+    }
+
+    int createSetChAvoidRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, CHAVOID_SUBCMD_SET_CONFIG);
+        if (result < 0) {
+            ALOGE("%s : Failed to create SUBCMD\n", __func__);
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+        result = request.put_u32(CHAVOID_ATTRIBUTE_CNT, mNumParams);
+        if (result < 0) {
+            ALOGE("%s : Failed to set cound\n", __func__);
+            return result;
+        }
+        result = request.put_u32(CHAVOID_ATTRIBUTE_MANDATORY, mMandatory);
+        if (result < 0) {
+            ALOGE("%s : Failed to set mandatory cap\n", __func__);
+            return result;
+        }
+
+        nlattr *chavoid_config = request.attr_start(CHAVOID_ATTRIBUTE_CONFIG);
+        for (int i = 0; i< mNumParams; i++) {
+            nlattr *item = request.attr_start(i);
+            if (item == NULL) {
+                ALOGE("%s : Failed to alloc item\n", __func__);
+                return WIFI_ERROR_OUT_OF_MEMORY;
+            }
+            result = request.put_u32(CHAVOID_ATTRIBUTE_BAND, chavoidParams[i].band);
+            if (result < 0) {
+                ALOGE("%s : Failed to set band\n", __func__);
+                return result;
+            }
+            result = request.put_u32(CHAVOID_ATTRIBUTE_CHANNEL, chavoidParams[i].channel);
+            if (result < 0) {
+                ALOGE("%s : Failed to set channel\n", __func__);
+                return result;
+            }
+            result = request.put_u32(CHAVOID_ATTRIBUTE_PWRCAP, chavoidParams[i].power_cap_dbm);
+            if (result < 0) {
+                ALOGE("%s : Failed to set power cap\n", __func__);
+                return result;
+            }
+            request.attr_end(item);
+        }
+        request.attr_end(chavoid_config);
+        request.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+
+    int start() {
+        WifiRequest request(familyId(), ifaceId());
+        int result = createRequest(request);
+        if (result < 0) {
+            return result;
+        }
+        result = requestResponse(request);
+        if (result < 0) {
+            ALOGI("Request Response failed for ChAvoid, result = %d", result);
+            return result;
+        }
+        return result;
+    }
+
+    int handleResponse(WifiEvent& reply) {
+        ALOGD("In ChAvoidCommand::handleResponse");
+
+        if (reply.get_cmd() != NL80211_CMD_VENDOR) {
+            ALOGD("Ignoring reply with cmd = %d", reply.get_cmd());
+            return NL_SKIP;
+        }
+
+        nlattr *vendor_data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
+        int len = reply.get_vendor_data_len();
+
+        if (vendor_data == NULL || len == 0) {
+            ALOGE("no vendor data in ChAvoidCommand response; ignoring it");
+            return NL_SKIP;
+        }
+        ALOGD("Response received for ChAvoid command\n");
+        return NL_OK;
+    }
+
+    int handleEvent(WifiEvent& event) {
+        /* No Event to receive for ChAvoid commands */
+        ALOGD("ChAvoid command %s\n", __FUNCTION__);
+        return NL_SKIP;
+    }
+};
+
+wifi_error wifi_set_coex_unsafe_channels(wifi_handle handle,
+        u32 num, wifi_coex_unsafe_channel channels[], u32 mandatory)
+{
+    int numIfaceHandles = 0;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+
+    ChAvoidCommand *cmd = new ChAvoidCommand(wlan0Handle, num, channels, mandatory);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    wifi_error result = (wifi_error)cmd->start();
+    if (result == WIFI_SUCCESS) {
+        ALOGI("Setting Channel Avoidance success\n");
+    } else {
+        ALOGE("Setting Channel Avoidance failed\n");
+    }
+    cmd->releaseRef();
+    return result;
+}
+
+/////////////////////////////////////////////////////////////////////////////
+
 class DscpCommand : public WifiCommand {
     private:
 	u32 mStart;
@@ -2003,15 +2146,15 @@ exit:
             return NL_SKIP;
         }
         if( mReqType == SET_DSCP_TABLE) {
-            ALOGD("Response recieved for Set DSCP command\n");
+            ALOGD("Response received for Set DSCP command\n");
         } else if (mReqType == RESET_DSCP_TABLE) {
-            ALOGD("Response recieved for Reset DSCP command\n");
+            ALOGD("Response received for Reset DSCP command\n");
         }
         return NL_OK;
     }
 
     int handleEvent(WifiEvent& event) {
-        /* No Event to recieve for DSCP commands */
+        /* No Event to receive for DSCP commands */
         ALOGD("DSCP command %s\n", __FUNCTION__);
         return NL_SKIP;
     }
