@@ -1549,7 +1549,7 @@ wifi_error wifi_add_iface_hal_info(wifi_handle handle, const char* ifname)
     int i = 0;
 
     info = (hal_info *)handle;
-    if (info != NULL) {
+    if (info == NULL) {
         ALOGE("Could not find info\n");
         return WIFI_ERROR_UNKNOWN;
     }
