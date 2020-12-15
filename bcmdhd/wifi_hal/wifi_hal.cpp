@@ -65,7 +65,7 @@
 
 #define WIFI_HAL_CMD_SOCK_PORT       644
 #define WIFI_HAL_EVENT_SOCK_PORT     645
-#define MAX_VIRTUAL_IFACES           3
+#define MAX_VIRTUAL_IFACES           4
 
 /*
  * Defines for wifi_wait_for_driver_ready()
