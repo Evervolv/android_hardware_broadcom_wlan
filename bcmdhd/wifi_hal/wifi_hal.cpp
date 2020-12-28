@@ -157,6 +157,18 @@ enum wifi_chavoid_attr {
     CHAVOID_ATTRIBUTE_MAX
 };
 
+enum wifi_multista_attr {
+    MULTISTA_ATTRIBUTE_PRIM_CONN_IFACE,
+    MULTISTA_ATTRIBUTE_USE_CASE,
+    /* Add more attributes here */
+    MULTISTA_ATTRIBUTE_MAX
+};
+
+enum multista_request_type {
+    SET_PRIMARY_CONNECTION,
+    SET_USE_CASE
+};
+
 /* Initialize/Cleanup */
 
 void wifi_socket_set_local_port(struct nl_sock *sock, uint32_t port)
@@ -295,6 +307,8 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_twt_info_frame_request = twt_info_frame_request;
     fn->wifi_twt_get_stats = twt_get_stats;
     fn->wifi_twt_clear_stats = twt_clear_stats;
+    fn->wifi_multi_sta_set_primary_connection = wifi_multi_sta_set_primary_connection;
+    fn->wifi_multi_sta_set_use_case = wifi_multi_sta_set_use_case;
 
     return WIFI_SUCCESS;
 }
@@ -1640,6 +1654,29 @@ wifi_error wifi_get_iface_name(wifi_interface_handle handle, char *name, size_t 
     return WIFI_SUCCESS;
 }
 
+wifi_interface_handle wifi_get_iface_handle(wifi_handle handle, char *name)
+{
+    char buf[EVENT_BUF_SIZE];
+    wifi_interface_handle *ifaceHandles;
+    int numIfaceHandles;
+    wifi_interface_handle ifHandle;
+
+    wifi_error res = wifi_get_ifaces((wifi_handle)handle, &numIfaceHandles, &ifaceHandles);
+    if (res < 0) {
+        return NULL;
+    }
+    for (int i = 0; i < numIfaceHandles; i++) {
+        if (wifi_get_iface_name(ifaceHandles[i], buf, sizeof(buf)) == WIFI_SUCCESS) {
+            if (strcmp(buf, name) == 0) {
+                ALOGI("found interface %s\n", buf);
+                ifHandle = ifaceHandles[i];
+                return ifHandle;
+            }
+        }
+    }
+    return NULL;
+}
+
 wifi_error wifi_get_supported_feature_set(wifi_interface_handle handle, feature_set *set)
 {
     GetFeatureSetCommand command(handle, ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET, set, NULL, NULL, 1);
@@ -2429,3 +2466,128 @@ wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname)
     return ret;
 }
 /////////////////////////////////////////////////////////////////////////////
+
+class MultiStaConfig : public WifiCommand {
+    wifi_multi_sta_use_case mUseCase;
+    int mReqType;
+
+public:
+    MultiStaConfig(wifi_interface_handle handle)
+    : WifiCommand("MultiStaConfig", handle, 0), mReqType(SET_PRIMARY_CONNECTION)
+    {
+    }
+    MultiStaConfig(wifi_interface_handle handle, wifi_multi_sta_use_case use_case)
+    : WifiCommand("MultiStaConfig", handle, 0), mUseCase(use_case), mReqType(SET_USE_CASE)
+    {
+        mUseCase = use_case;
+    }
+
+    int createRequest(WifiRequest& request) {
+        if (mReqType == SET_PRIMARY_CONNECTION) {
+            ALOGI("\n%s: MultiSta set primary connection\n", __FUNCTION__);
+            return createSetPrimaryConnectionRequest(request);
+        } else if (mReqType == SET_USE_CASE) {
+            ALOGI("\n%s: MultiSta set use case\n", __FUNCTION__);
+            return createSetUsecaseRequest(request);
+        } else {
+            ALOGE("\n%s Unknown MultiSta request\n", __FUNCTION__);
+            return WIFI_ERROR_NOT_SUPPORTED;
+        }
+        return WIFI_SUCCESS;
+    }
+
+    int createSetPrimaryConnectionRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_SET_MULTISTA_PRIMARY_CONNECTION);
+        if (result < 0) {
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+        request.attr_end(data);
+
+        return result;
+    }
+
+    int createSetUsecaseRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_SET_MULTISTA_USE_CASE);
+        if (result < 0) {
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+        result = request.put_u32(MULTISTA_ATTRIBUTE_USE_CASE, mUseCase);
+        if (result < 0) {
+            ALOGE("failed to put MULTISTA_ATTRIBUTE_USE_CASE = %d; result = %d", mUseCase, result);
+            goto exit;
+        }
+
+exit:   request.attr_end(data);
+        return result;
+    }
+
+    int start() {
+        WifiRequest request(familyId(), ifaceId());
+        int result = createRequest(request);
+        if (result < 0) {
+            return result;
+        }
+        result = requestResponse(request);
+        if (result < 0) {
+            ALOGI("Request Response failed for MultiSta, result = %d", result);
+            return result;
+        }
+        ALOGI("Done!");
+        return result;
+    }
+protected:
+    virtual int handleResponse(WifiEvent& reply) {
+        ALOGD("Request complete!");
+        /* Nothing to do on response! */
+        return NL_SKIP;
+    }
+};
+
+wifi_error wifi_multi_sta_set_primary_connection(wifi_handle handle, wifi_interface_handle iface)
+{
+    wifi_error ret = WIFI_SUCCESS;
+
+    if (!handle || !iface) {
+        ALOGE("%s: Error wifi_handle NULL or invalid wifi interface handle\n", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    ALOGD("Setting Multista primary connection = %p\n", iface);
+    MultiStaConfig *cmd = new MultiStaConfig(iface);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    ret = (wifi_error)cmd->start();
+    cmd->releaseRef();
+    return ret;
+}
+
+wifi_error wifi_multi_sta_set_use_case(wifi_handle handle, wifi_multi_sta_use_case use_case)
+{
+    int numIfaceHandles = 0;
+    wifi_error ret = WIFI_SUCCESS;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+
+    if (!handle) {
+        ALOGE("%s: Error wifi_handle NULL\n", __FUNCTION__);
+        return WIFI_ERROR_UNKNOWN;
+    }
+
+    if (!(use_case >= WIFI_DUAL_STA_TRANSIENT_PREFER_PRIMARY &&
+	    use_case <= WIFI_DUAL_STA_NON_TRANSIENT_UNBIASED)) {
+        ALOGE("%s: Invalid  multi_sta usecase %d\n", __FUNCTION__, use_case);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+    ALOGD("Setting Multista usecase = %d\n", use_case);
+    MultiStaConfig *cmd = new MultiStaConfig(wlan0Handle, use_case);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+    ret = (wifi_error)cmd->start();
+    cmd->releaseRef();
+    return ret;
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////

@@ -165,6 +165,8 @@ typedef enum {
     WIFI_SUBCMD_FW_ROAM_POLICY,                          /* 0x1019 */
     WIFI_SUBCMD_ROAM_CAPABILITY,                         /* 0x101a */
     WIFI_SUBCMD_SET_LATENCY_MODE,                        /* 0x101b */
+    WIFI_SUBCMD_SET_MULTISTA_PRIMARY_CONNECTION,         /* 0x101c */
+    WIFI_SUBCMD_SET_MULTISTA_USE_CASE,                   /* 0x101d */
 
     GSCAN_SUBCMD_MAX,
 
