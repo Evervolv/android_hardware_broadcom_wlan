@@ -94,19 +94,22 @@ static wifi_error wifi_configure_nd_offload(wifi_interface_handle iface, u8 enab
 
 static void wifi_cleanup_dynamic_ifaces(wifi_handle handle);
 typedef enum wifi_attr {
-    ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET,
-    ANDR_WIFI_ATTRIBUTE_FEATURE_SET,
-    ANDR_WIFI_ATTRIBUTE_PNO_RANDOM_MAC_OUI,
-    ANDR_WIFI_ATTRIBUTE_NODFS_SET,
-    ANDR_WIFI_ATTRIBUTE_COUNTRY,
-    ANDR_WIFI_ATTRIBUTE_ND_OFFLOAD_VALUE,
-    ANDR_WIFI_ATTRIBUTE_TCPACK_SUP_VALUE,
-    ANDR_WIFI_ATTRIBUTE_LATENCY_MODE,
-    ANDR_WIFI_ATTRIBUTE_RANDOM_MAC,
-    ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO,
-    ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION,
-    ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW
-    // Add more attribute here
+    ANDR_WIFI_ATTRIBUTE_INVALID                    = 0,
+    ANDR_WIFI_ATTRIBUTE_NUM_FEATURE_SET            = 1,
+    ANDR_WIFI_ATTRIBUTE_FEATURE_SET                = 2,
+    ANDR_WIFI_ATTRIBUTE_PNO_RANDOM_MAC_OUI         = 3,
+    ANDR_WIFI_ATTRIBUTE_NODFS_SET                  = 4,
+    ANDR_WIFI_ATTRIBUTE_COUNTRY                    = 5,
+    ANDR_WIFI_ATTRIBUTE_ND_OFFLOAD_VALUE           = 6,
+    ANDR_WIFI_ATTRIBUTE_TCPACK_SUP_VALUE           = 7,
+    ANDR_WIFI_ATTRIBUTE_LATENCY_MODE               = 8,
+    ANDR_WIFI_ATTRIBUTE_RANDOM_MAC                 = 9,
+    ANDR_WIFI_ATTRIBUTE_TX_POWER_SCENARIO          = 10,
+    ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION         = 11,
+    ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW  = 12,
+    ANDR_WIFI_ATTRIBUTE_VOIP_MODE                  = 13,
+     // Add more attribute here
+    ANDR_WIFI_ATTRIBUTE_MAX
 } wifi_attr_t;
 
 enum wifi_rssi_monitor_attr {
@@ -309,6 +312,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_twt_clear_stats = twt_clear_stats;
     fn->wifi_multi_sta_set_primary_connection = wifi_multi_sta_set_primary_connection;
     fn->wifi_multi_sta_set_use_case = wifi_multi_sta_set_use_case;
+    fn->wifi_set_voip_mode = wifi_set_voip_mode;
 
     return WIFI_SUCCESS;
 }
@@ -2592,3 +2596,42 @@ wifi_error wifi_multi_sta_set_use_case(wifi_handle handle, wifi_multi_sta_use_ca
     return ret;
 }
 /////////////////////////////////////////////////////////////////////////////////////////////////
+
+class SetVoipModeCommand : public WifiCommand {
+
+private:
+    wifi_voip_mode mMode;
+public:
+    SetVoipModeCommand(wifi_interface_handle handle, wifi_voip_mode mode)
+        : WifiCommand("SetVoipModeCommand", handle, 0) {
+        mMode = mode;
+    }
+    virtual int create() {
+        int ret;
+
+        ret = mMsg.create(GOOGLE_OUI, WIFI_SUBCMD_CONFIG_VOIP_MODE);
+        if (ret < 0) {
+            ALOGE("Can't create message to send to driver - %d", ret);
+            return ret;
+        }
+
+        nlattr *data = mMsg.attr_start(NL80211_ATTR_VENDOR_DATA);
+        ret = mMsg.put_u32(ANDR_WIFI_ATTRIBUTE_VOIP_MODE, mMode);
+        ALOGE("mMode - %d", mMode);
+        if (ret < 0) {
+	    ALOGE("Failed to set voip mode %d\n", mMode);
+	    return ret;
+        }
+
+	ALOGI("Successfully configured voip mode %d\n", mMode);
+        mMsg.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+};
+
+wifi_error wifi_set_voip_mode(wifi_interface_handle handle, wifi_voip_mode mode)
+{
+    ALOGD("Setting VOIP mode, halHandle = %p Mode = %d\n", handle, mode);
+    SetVoipModeCommand command(handle, mode);
+    return (wifi_error) command.requestResponse();
+}

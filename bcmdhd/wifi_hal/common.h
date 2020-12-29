@@ -123,6 +123,10 @@ typedef enum {
     ANDROID_NL80211_SUBCMD_TWT_START =              0x2140,
     ANDROID_NL80211_SUBCMD_TWT_END =                0x214F,
 
+    /* define all VOIP mode config related commands between 0x2130 and 0x213F */
+    ANDROID_NL80211_SUBCMD_VIOP_MODE_START =	    0x2130,
+    ANDROID_NL80211_SUBCMD_VIOP_MODE_END =	    0x213F,
+
     /* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -205,6 +209,8 @@ typedef enum {
     TWT_SUBCMD_INFO_FRAME_REQUEST,
     TWT_SUBCMD_GETSTATS,
     TWT_SUBCMD_CLR_STATS,
+
+    WIFI_SUBCMD_CONFIG_VOIP_MODE = ANDROID_NL80211_SUBCMD_VIOP_MODE_START,
 } WIFI_SUB_COMMAND;
 
 typedef enum {
@@ -427,6 +433,7 @@ wifi_error wifi_virtual_interface_create(wifi_handle handle, const char* ifname,
 wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname);
 wifi_error wifi_set_coex_unsafe_channels(wifi_handle handle, u32 num_channels,
                                          wifi_coex_unsafe_channel channels[], u32 restrictions);
+wifi_error wifi_set_voip_mode(wifi_interface_handle handle, wifi_voip_mode mode);
 void set_hautil_mode(bool halutil_mode);
 bool get_halutil_mode();
 
