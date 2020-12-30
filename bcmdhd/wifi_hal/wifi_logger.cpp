@@ -34,6 +34,7 @@
 #include <netlink-private/object-api.h>
 #include <netlink-private/types.h>
 #include <unistd.h>
+#include <cutils/properties.h>
 
 
 #include "nl80211_copy.h"
@@ -71,6 +72,20 @@ typedef enum {
     LOGGER_HAL_STOP,
     LOGGER_SET_HAL_PID
 } DEBUG_SUB_COMMAND;
+
+#define OTA_PATH "/data/vendor/firmware/wifi/"
+#define OTA_CLM_FILE "bcmdhd_clm.blob"
+#define OTA_NVRAM_FILE "bcmdhd.cal"
+#define HW_DEV_PROP "ro.revision"
+
+char ota_nvram_ext[10];
+typedef struct ota_info_buf {
+    u32 ota_clm_len;
+    const void *ota_clm_buf[1];
+    u32 ota_nvram_len;
+    const void *ota_nvram_buf[1];
+} ota_info_buf_t;
+u32 applied_ota_version = 0;
 
 typedef enum {
     LOGGER_ATTRIBUTE_INVALID			= 0,
@@ -152,8 +167,18 @@ typedef enum {
     SET_HAL_START_ATTRIBUTE_EVENT_SOCK_PID = 0x0003
 } SET_HAL_START_ATTRIBUTE;
 
+typedef enum {
+    OTA_DOWNLOAD_CLM_LENGTH_ATTR    = 0x0001,
+    OTA_DOWNLOAD_CLM_ATTR           = 0x0002,
+    OTA_DOWNLOAD_NVRAM_LENGTH_ATTR  = 0x0003,
+    OTA_DOWNLOAD_NVRAM_ATTR         = 0x0004,
+    OTA_SET_FORCE_REG_ON            = 0x0005,
+    OTA_CUR_NVRAM_EXT_ATTR          = 0x0006,
+} OTA_DOWNLOAD_ATTRIBUTE;
+
 #define HAL_START_REQUEST_ID 2
 #define HAL_RESTART_ID 3
+#define FILE_NAME_LEN 256
 ///////////////////////////////////////////////////////////////////////////////
 class DebugCommand : public WifiCommand
 {
@@ -1622,5 +1647,221 @@ wifi_error wifi_get_wake_reason_stats(wifi_interface_handle handle,
         new GetWakeReasonCountCommand(handle, wifi_wake_reason_cnt);
     wifi_error result = (wifi_error)cmd->start();
     cmd->releaseRef();
+    return result;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+class OtaUpdateCommand : public WifiCommand
+{
+    int mErrCode;
+
+    public:
+    OtaUpdateCommand(wifi_interface_handle iface)
+        : WifiCommand("OtaUpdateCommand", iface, 0), mErrCode(0)
+    { }
+
+    int start() {
+        ALOGE("Start OtaUpdateCommand");
+        WifiRequest request(familyId(), ifaceId());
+
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_GET_OTA_CURRUNT_INFO);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to set hal start; result = %d", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to register set hal start response; result = %d", result);
+        }
+        return result;
+    }
+
+    int otaDownload(ota_info_buf_t* buf, uint32_t ota_version) {
+        u32 force_reg_on = false;
+        WifiRequest request(familyId(), ifaceId());
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_OTA_UPDATE);
+
+        ALOGE("Download the OTA configuration");
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to set Hal preInit; result = %d", result);
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+
+        result = request.put_u32(OTA_DOWNLOAD_CLM_LENGTH_ATTR, buf->ota_clm_len);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("otaDownload Failed to put data= %d", result);
+            return result;
+        }
+
+        result = request.put(OTA_DOWNLOAD_CLM_ATTR, buf->ota_clm_buf, sizeof(*buf->ota_clm_buf));
+        if (result != WIFI_SUCCESS) {
+            ALOGE("otaDownload Failed to put data= %d", result);
+            return result;
+        }
+
+        result = request.put_u32(OTA_DOWNLOAD_NVRAM_LENGTH_ATTR, buf->ota_nvram_len);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("otaDownload Failed to put data= %d", result);
+            return result;
+        }
+
+        result = request.put(OTA_DOWNLOAD_NVRAM_ATTR, buf->ota_clm_buf, sizeof(*buf->ota_clm_buf));
+        if (result != WIFI_SUCCESS) {
+            ALOGE("otaDownload Failed to put data= %d", result);
+            return result;
+        }
+
+        if (applied_ota_version != ota_version) {
+            force_reg_on = true;
+            applied_ota_version = ota_version;
+        }
+        result = request.put_u32(OTA_SET_FORCE_REG_ON, force_reg_on);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("otaDownload Failed to put data= %d", result);
+            return result;
+        }
+
+        request.attr_end(data);
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to register set otaDownload; result = %d", result);
+        }
+
+        return result;
+    }
+
+    virtual int handleResponse(WifiEvent& reply) {
+        ALOGD("In OtaUpdateCommand::handleResponse");
+
+        if (reply.get_cmd() != NL80211_CMD_VENDOR) {
+            ALOGD("Ignoring reply with cmd = %d", reply.get_cmd());
+            return NL_SKIP;
+        }
+
+        int id = reply.get_vendor_id();
+        int subcmd = reply.get_vendor_subcmd();
+        nlattr *vendor_data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
+        int len = reply.get_vendor_data_len();
+
+        ALOGI("Id = %0x, subcmd = %d, len = %d", id, subcmd, len);
+
+        if (vendor_data == NULL || len == 0) {
+            ALOGE("no vendor data in GetPktFateCommand response; ignoring it\n");
+            return NL_SKIP;
+        }
+
+        for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
+            switch (it.get_type()) {
+                case OTA_CUR_NVRAM_EXT_ATTR:
+                    strncpy(ota_nvram_ext, (char*)it.get_string(), it.get_len());
+                    ALOGE("Current Nvram ext [%s]\n", ota_nvram_ext);
+                    break;
+                default:
+                    ALOGE("Ignoring invalid attribute type = %d, size = %d\n",
+                            it.get_type(), it.get_len());
+                    break;
+            }
+        }
+        return NL_OK;
+    }
+
+    virtual int handleEvent(WifiEvent& event) {
+        /* NO events! */
+        return NL_SKIP;
+    }
+};
+
+wifi_error read_ota_file(char* file, char** buffer, uint32_t* size)
+{
+    FILE* fp = NULL;
+    int file_size, count;
+    char* buf;
+    fp = fopen(file, "r");
+
+    if (fp == NULL) {
+        ALOGE("Read fail.");
+        return WIFI_ERROR_NOT_AVAILABLE;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    file_size = ftell(fp);
+
+    buf = (char *)malloc(file_size + 1);
+    if (buf == NULL) {
+        fclose(fp);
+        return WIFI_ERROR_UNKNOWN;
+    }
+    memset(buf, 0, file_size + 1);
+    fseek(fp, 0, SEEK_SET);
+    count = fread(buf, file_size, 1, fp);
+
+    *buffer = (char*) buf;
+    *size = file_size;
+    fclose(fp);
+    return WIFI_SUCCESS;
+}
+
+wifi_error wifi_hal_ota_update(wifi_interface_handle iface, uint32_t ota_version)
+{
+    wifi_handle handle = getWifiHandle(iface);
+    wifi_error result = WIFI_SUCCESS;
+    ota_info_buf_t buf;
+    char file_name[FILE_NAME_LEN];
+    char *buffer_nvram = NULL;
+    char *buffer_clm = NULL;
+    char prop_buf[PROPERTY_VALUE_MAX] = {0,};
+
+    OtaUpdateCommand *cmd = new OtaUpdateCommand(iface);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+
+    ALOGD("wifi_hal_ota_update, handle = %p, ota_version %d\n", handle, ota_version);
+
+    result = (wifi_error)cmd->start();
+    if (result != WIFI_SUCCESS) {
+        cmd->releaseRef();
+        return result;
+    }
+
+    sprintf(file_name, "%s%s", OTA_PATH, OTA_CLM_FILE);
+    ALOGE("[OTA] PATH CLM %s", file_name);
+    read_ota_file(file_name, &buffer_clm, &buf.ota_clm_len);
+    if (buffer_clm == NULL) {
+        ALOGE("buffer_clm is null");
+        goto exit;
+    }
+    buf.ota_clm_buf[0] = buffer_clm;
+
+    memset(file_name, 0, FILE_NAME_LEN);
+    property_get(HW_DEV_PROP, prop_buf, NULL);
+    sprintf(file_name, "%s%s_%s", OTA_PATH, OTA_NVRAM_FILE, prop_buf);
+    result = read_ota_file(file_name, &buffer_nvram, &buf.ota_nvram_len);
+    if (result != WIFI_SUCCESS) {
+        memset(file_name, 0, FILE_NAME_LEN);
+        sprintf(file_name, "%s%s", OTA_PATH, OTA_NVRAM_FILE);
+        read_ota_file(file_name, &buffer_nvram, &buf.ota_nvram_len);
+    }
+    if (buffer_nvram == NULL) {
+        ALOGE("buffer_nvram is null");
+        goto exit;
+    }
+
+    ALOGE("[OTA] PATH NVRAM %s", file_name);
+    buf.ota_nvram_buf[0] = buffer_nvram;
+    cmd->otaDownload(&buf, ota_version);
+
+exit:
+    if (buffer_clm != NULL) {
+        free(buffer_clm);
+    }
+    if (buffer_nvram != NULL) {
+        free(buffer_nvram);
+    }
+
+    cmd->releaseRef();
+
     return result;
 }

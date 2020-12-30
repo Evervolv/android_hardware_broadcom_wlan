@@ -41,6 +41,9 @@ LOCAL_C_INCLUDES += \
 
 LOCAL_HEADER_LIBRARIES := libutils_headers liblog_headers
 
+LOCAL_SHARED_LIBRARIES += \
+	google_wifi_firmware_config_version_c_wrapper
+
 LOCAL_SRC_FILES := \
 	wifi_hal.cpp \
 	rtt.cpp \
