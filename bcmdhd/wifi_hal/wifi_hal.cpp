@@ -368,7 +368,7 @@ wifi_error wifi_pre_initialize(void)
     }
 
     /* Set the socket buffer size */
-    if (nl_socket_set_buffer_size(event_sock, (512*1024), 0) < 0) {
+    if (nl_socket_set_buffer_size(event_sock, (2*1024*1024), 0) < 0) {
         ALOGE("Could not set size for event_sock: %s",
                strerror(errno));
     } else {
