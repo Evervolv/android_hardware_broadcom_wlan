@@ -4394,6 +4394,7 @@ wifi_error nan_deinit_handler()
         delete GET_NAN_HANDLE(info);
         NAN_HANDLE(info) = NULL;
     }
+    ALOGI("wifi nan internal clean up done");
     return WIFI_SUCCESS;
 }
 wifi_error nan_register_handler(wifi_interface_handle iface,

@@ -50,7 +50,8 @@ LOCAL_SRC_FILES := \
 	nan.cpp \
 	link_layer_stats.cpp \
 	wifi_logger.cpp \
-	wifi_offload.cpp
+	wifi_offload.cpp \
+	twt.cpp
 
 LOCAL_MODULE := libwifi-hal-bcm
 LOCAL_PROPRIETARY_MODULE := true

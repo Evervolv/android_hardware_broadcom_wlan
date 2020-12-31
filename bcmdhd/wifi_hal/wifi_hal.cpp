@@ -288,6 +288,13 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_virtual_interface_create = wifi_virtual_interface_create;
     fn->wifi_virtual_interface_delete = wifi_virtual_interface_delete;
     fn->wifi_set_coex_unsafe_channels = wifi_set_coex_unsafe_channels;
+    fn->wifi_twt_get_capability = twt_get_capability;
+    fn->wifi_twt_register_handler = twt_register_handler;
+    fn->wifi_twt_setup_request = twt_setup_request;
+    fn->wifi_twt_teardown_request = twt_teardown_request;
+    fn->wifi_twt_info_frame_request = twt_info_frame_request;
+    fn->wifi_twt_get_stats = twt_get_stats;
+    fn->wifi_twt_clear_stats = twt_clear_stats;
 
     return WIFI_SUCCESS;
 }
@@ -532,9 +539,11 @@ static void internal_cleaned_up_handler(wifi_handle handle)
 
     ALOGI("Internal cleanup completed");
 }
+
 void wifi_internal_module_cleanup()
 {
     nan_deinit_handler();
+    twt_deinit_handler();
 }
 
 void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
@@ -586,7 +595,6 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
     info->clean_up = true;
     /* calling internal modules or cleanup */
     wifi_internal_module_cleanup();
-    ALOGI("wifi nan internal clean up done");
     pthread_mutex_lock(&info->cb_lock);
 
     int bad_commands = 0;

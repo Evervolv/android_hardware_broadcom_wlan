@@ -119,6 +119,10 @@ typedef enum {
     ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START =    0x2100,
     ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_END   =    0x211F,
 
+    /* define all TWT related commands between 0x2140 and 0x214F */
+    ANDROID_NL80211_SUBCMD_TWT_START =              0x2140,
+    ANDROID_NL80211_SUBCMD_TWT_END =                0x214F,
+
     /* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -192,6 +196,13 @@ typedef enum {
     DSCP_SUBCMD_SET_TABLE = ANDROID_NL80211_SUBCMD_DSCP_RANGE_START,
     DSCP_SUBCMD_RESET_TABLE,			    	/* 0x2001 */
     CHAVOID_SUBCMD_SET_CONFIG = ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START,
+
+    TWT_SUBCMD_GETCAPABILITY	= ANDROID_NL80211_SUBCMD_TWT_START,
+    TWT_SUBCMD_SETUP_REQUEST,
+    TWT_SUBCMD_TEAR_DOWN_REQUEST,
+    TWT_SUBCMD_INFO_FRAME_REQUEST,
+    TWT_SUBCMD_GETSTATS,
+    TWT_SUBCMD_CLR_STATS,
 } WIFI_SUB_COMMAND;
 
 typedef enum {
@@ -231,11 +242,14 @@ typedef enum {
     NAN_EVENT_SDF				= 28,
     NAN_EVENT_TCA				= 29,
     NAN_EVENT_SUBSCRIBE_UNMATCH			= 30,
-    NAN_EVENT_UNKNOWN,
+    NAN_EVENT_UNKNOWN				= 31,
     BRCM_VENDOR_EVENT_HANGED			= 33,
     ROAM_EVENT_START,
     GOOGLE_FILE_DUMP_EVENT			= 37,
-    NAN_ASYNC_RESPONSE_DISABLED			= 40
+    NAN_ASYNC_RESPONSE_DISABLED			= 40,
+    BRCM_VENDOR_EVENT_TWT			= 43,
+    BRCM_TPUT_DUMP_EVENT			= 44,
+    NAN_EVENT_MATCH_EXPIRY			= 45
 } WIFI_EVENT;
 
 typedef void (*wifi_internal_event_handler) (wifi_handle handle, int events);
@@ -324,6 +338,59 @@ typedef struct wifi_gscan_full_result {
     u8  ie_data[1];                  // IE data to follow
 } wifi_gscan_full_result_t;
 
+void twt_deinit_handler();
+
+typedef enum {
+    TWT_EVENT_INVALID          = 0,
+    TWT_SETUP_RESPONSE         = 1,
+    TWT_TEARDOWN_COMPLETION    = 2,
+    TWT_INFORM_FRAME           = 3,
+    TWT_NOTIFY                 = 4,
+    TWT_EVENT_LAST
+} TwtEventType;
+
+typedef enum {
+    TWT_INVALID			= 0,
+    TWT_SETUP_REQUEST		= 1,
+    TWT_INFO_FRAME_REQUEST	= 2,
+    TWT_TEAR_DOWN_REQUEST	= 3,
+    TWT_LAST
+} TwtRequestType;
+
+typedef enum {
+    TWT_ATTRIBUTE_INVALID		= 0,
+    TWT_ATTRIBUTE_CONFIG_ID		= 1,
+    TWT_ATTRIBUTE_NEG_TYPE		= 2,
+    TWT_ATTRIBUTE_TRIGGER_TYPE		= 3,
+    TWT_ATTRIBUTE_WAKE_DUR_US		= 4,
+    TWT_ATTRIBUTE_WAKE_INT_US		= 5,
+    TWT_ATTRIBUTE_WAKE_INT_MIN_US	= 6,
+    TWT_ATTRIBUTE_WAKE_INT_MAX_US	= 7,
+    TWT_ATTRIBUTE_WAKE_DUR_MIN_US	= 8,
+    TWT_ATTRIBUTE_WAKE_DUR_MAX_US	= 9,
+    TWT_ATTRIBUTE_AVG_PKT_SIZE		= 10,
+    TWT_ATTRIBUTE_AVG_PKT_NUM		= 11,
+    TWT_ATTRIBUTE_WAKE_TIME_OFF_US	= 12,
+    TWT_ATTRIBUTE_ALL_TWT		= 13,
+    TWT_ATTRIBUTE_RESUME_TIME_US	= 14,
+    TWT_ATTRIBUTE_AVG_EOSP_DUR		= 15,
+    TWT_ATTRIBUTE_EOSP_COUNT		= 16,
+    TWT_ATTRIBUTE_NUM_SP		= 17,
+    TWT_ATTRIBUTE_DEVICE_CAP		= 18,
+    TWT_ATTRIBUTE_PEER_CAP		= 19,
+    TWT_ATTRIBUTE_STATUS		= 20,
+    TWT_ATTRIBUTE_REASON_CODE		= 21,
+    TWT_ATTRIBUTE_RESUMED		= 22,
+    TWT_ATTRIBUTE_NOTIFICATION		= 23,
+    TWT_ATTRIBUTE_SUB_EVENT		= 24,
+    TWT_ATTRIBUTE_NUM_PEER_STATS	= 25,
+    TWT_ATTRIBUTE_AVG_PKT_NUM_TX	= 26,
+    TWT_ATTRIBUTE_AVG_PKT_SIZE_TX	= 27,
+    TWT_ATTRIBUTE_AVG_PKT_NUM_RX	= 28,
+    TWT_ATTRIBUTE_AVG_PKT_SIZE_RX	= 29,
+    TWT_ATTRIBUTE_MAX
+} TWT_ATTRIBUTE;
+
 wifi_error wifi_register_handler(wifi_handle handle, int cmd, nl_recvmsg_msg_cb_t func, void *arg);
 wifi_error wifi_register_vendor_handler(wifi_handle handle,
             uint32_t id, int subcmd, nl_recvmsg_msg_cb_t func, void *arg);
@@ -360,6 +427,69 @@ wifi_error wifi_set_coex_unsafe_channels(wifi_handle handle, u32 num_channels,
                                          wifi_coex_unsafe_channel channels[], u32 restrictions);
 void set_hautil_mode(bool halutil_mode);
 bool get_halutil_mode();
+
+/* API's to support TWT */
+
+/**@brief twt_get_capability
+ *        Request TWT capability
+ * @param wifi_interface_handle:
+ * @return Synchronous wifi_error and TwtCapabilitySet
+ */
+wifi_error twt_get_capability(wifi_interface_handle iface, TwtCapabilitySet* twt_cap_set);
+
+/**@brief twt_register_handler
+ *        Request to register TWT callback
+ * @param wifi_interface_handle:
+ * @param TwtCallbackHandler:
+ * @return Synchronous wifi_error
+ */
+wifi_error twt_register_handler(wifi_interface_handle iface, TwtCallbackHandler handler);
+
+/**@brief twt_setup_request
+ *        Request to send TWT setup frame
+ * @param wifi_interface_handle:
+ * @param TwtSetupRequest:
+ * @return Synchronous wifi_error
+ * @return Asynchronous EventTwtSetupResponse CB return TwtSetupResponse
+ */
+wifi_error twt_setup_request(wifi_interface_handle iface, TwtSetupRequest* msg);
+
+/**@brief twt_teardown_request
+ *        Request to send TWT teardown frame
+ * @param wifi_interface_handle:
+ * @param TwtTeardownRequest:
+ * @return Synchronous wifi_error
+ * @return Asynchronous EventTwtTeardownCompletion CB return TwtTeardownCompletion
+ * TwtTeardownCompletion may also be received due to other events
+ * like CSA, BTCX, TWT scheduler, MultiConnection, peer-initiated teardown, etc.
+ */
+wifi_error twt_teardown_request(wifi_interface_handle iface, TwtTeardownRequest* msg);
+
+/**@brief twt_info_frame_request
+ *        Request to send TWT info frame
+ * @param wifi_interface_handle:
+ * @param TwtInfoFrameRequest:
+ * @return Synchronous wifi_error
+ * @return Asynchronous EventTwtInfoFrameReceived CB return TwtInfoFrameReceived
+ * Driver may also receive Peer-initiated TwtInfoFrame
+ */
+wifi_error twt_info_frame_request(wifi_interface_handle iface, TwtInfoFrameRequest* msg);
+
+/**@brief twt_get_stats
+ *        Request to get TWT stats
+ * @param wifi_interface_handle:
+ * @param config_id:
+ * @return Synchronous wifi_error and TwtStats
+ */
+wifi_error twt_get_stats(wifi_interface_handle iface, u8 config_id, TwtStats* stats);
+
+/**@brief twt_clear_stats
+ *        Request to clear TWT stats
+ * @param wifi_interface_handle:
+ * @param config_id:
+ * @return Synchronous wifi_error
+ */
+wifi_error twt_clear_stats(wifi_interface_handle iface, u8 config_id);
 
 // some common macros
 
