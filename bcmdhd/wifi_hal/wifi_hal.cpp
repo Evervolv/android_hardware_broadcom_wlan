@@ -1656,6 +1656,11 @@ wifi_error wifi_clear_iface_hal_info(wifi_handle handle, const char* ifname)
         }
         i++;
     }
+    if (i < info->num_interfaces) {
+        for (int j = i; j < info->num_interfaces; j++) {
+            info->interfaces[j] = info->interfaces[j+1];
+        }
+    }
     return WIFI_SUCCESS;
 }
 
