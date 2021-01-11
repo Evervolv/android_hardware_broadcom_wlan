@@ -108,6 +108,7 @@ typedef enum wifi_attr {
     ANDR_WIFI_ATTRIBUTE_THERMAL_MITIGATION         = 11,
     ANDR_WIFI_ATTRIBUTE_THERMAL_COMPLETION_WINDOW  = 12,
     ANDR_WIFI_ATTRIBUTE_VOIP_MODE                  = 13,
+    ANDR_WIFI_ATTRIBUTE_DTIM_MULTIPLIER            = 14,
      // Add more attribute here
     ANDR_WIFI_ATTRIBUTE_MAX
 } wifi_attr_t;
@@ -313,6 +314,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_multi_sta_set_primary_connection = wifi_multi_sta_set_primary_connection;
     fn->wifi_multi_sta_set_use_case = wifi_multi_sta_set_use_case;
     fn->wifi_set_voip_mode = wifi_set_voip_mode;
+    fn->wifi_set_dtim_config = wifi_set_dtim_config;
 
     return WIFI_SUCCESS;
 }
@@ -2665,5 +2667,44 @@ wifi_error wifi_set_voip_mode(wifi_interface_handle handle, wifi_voip_mode mode)
 {
     ALOGD("Setting VOIP mode, halHandle = %p Mode = %d\n", handle, mode);
     SetVoipModeCommand command(handle, mode);
+    return (wifi_error) command.requestResponse();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+class SetDtimConfigCommand : public WifiCommand {
+
+private:
+    uint32_t multiplier;
+public:
+    SetDtimConfigCommand(wifi_interface_handle handle, u32 dtim_multiplier)
+        : WifiCommand("SetDtimConfigCommand", handle, 0) {
+        multiplier = dtim_multiplier;
+    }
+    virtual int create() {
+        int ret;
+
+        ret = mMsg.create(GOOGLE_OUI, WIFI_SUBCMD_SET_DTIM_CONFIG);
+        if (ret < 0) {
+            ALOGE("Can't create message to send to driver - %d", ret);
+            return ret;
+        }
+
+        nlattr *data = mMsg.attr_start(NL80211_ATTR_VENDOR_DATA);
+        ret = mMsg.put_u32(ANDR_WIFI_ATTRIBUTE_DTIM_MULTIPLIER, multiplier);
+        if (ret < 0) {
+             ALOGE("Failed to set dtim mutiplier %d\n", multiplier);
+             return ret;
+        }
+
+        ALOGI("Successfully configured dtim multiplier %d\n", multiplier);
+        mMsg.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+};
+
+wifi_error wifi_set_dtim_config(wifi_interface_handle handle, u32 multiplier)
+{
+    ALOGD("Setting DTIM config , halHandle = %p Multiplier = %d\n", handle, multiplier);
+    SetDtimConfigCommand command(handle, multiplier);
     return (wifi_error) command.requestResponse();
 }
