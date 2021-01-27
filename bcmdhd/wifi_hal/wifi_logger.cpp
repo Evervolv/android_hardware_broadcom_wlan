@@ -73,10 +73,13 @@ typedef enum {
     LOGGER_SET_HAL_PID
 } DEBUG_SUB_COMMAND;
 
+#define MAX_NV_FILE 4
+#define MAX_SKU_NAME_LEN 5
 #define OTA_PATH "/data/vendor/firmware/wifi/"
 #define OTA_CLM_FILE "bcmdhd_clm.blob"
 #define OTA_NVRAM_FILE "bcmdhd.cal"
 #define HW_DEV_PROP "ro.revision"
+#define HW_SKU_PROP "ro.boot.hardware.sku"
 
 char ota_nvram_ext[10];
 typedef struct ota_info_buf {
@@ -1810,10 +1813,13 @@ wifi_error wifi_hal_ota_update(wifi_interface_handle iface, uint32_t ota_version
     wifi_handle handle = getWifiHandle(iface);
     wifi_error result = WIFI_SUCCESS;
     ota_info_buf_t buf;
-    char file_name[FILE_NAME_LEN];
+    char clm_file_name[FILE_NAME_LEN];
+    char nv_file_name[MAX_NV_FILE][FILE_NAME_LEN];
     char *buffer_nvram = NULL;
     char *buffer_clm = NULL;
-    char prop_buf[PROPERTY_VALUE_MAX] = {0,};
+    char prop_revision_buf[PROPERTY_VALUE_MAX] = {0,};
+    char prop_sku_buf[PROPERTY_VALUE_MAX] = {0,};
+    char sku_name[MAX_SKU_NAME_LEN] = {0,};
 
     OtaUpdateCommand *cmd = new OtaUpdateCommand(iface);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
@@ -1826,30 +1832,59 @@ wifi_error wifi_hal_ota_update(wifi_interface_handle iface, uint32_t ota_version
         return result;
     }
 
-    sprintf(file_name, "%s%s", OTA_PATH, OTA_CLM_FILE);
-    ALOGE("[OTA] PATH CLM %s", file_name);
-    read_ota_file(file_name, &buffer_clm, &buf.ota_clm_len);
+    memset(clm_file_name, 0, FILE_NAME_LEN);
+    sprintf(clm_file_name, "%s%s", OTA_PATH, OTA_CLM_FILE);
+    ALOGE("[OTA] PATH CLM %s", clm_file_name);
+    read_ota_file(clm_file_name, &buffer_clm, &buf.ota_clm_len);
     if (buffer_clm == NULL) {
         ALOGE("buffer_clm is null");
         goto exit;
     }
     buf.ota_clm_buf[0] = buffer_clm;
 
-    memset(file_name, 0, FILE_NAME_LEN);
-    property_get(HW_DEV_PROP, prop_buf, NULL);
-    sprintf(file_name, "%s%s_%s", OTA_PATH, OTA_NVRAM_FILE, prop_buf);
-    result = read_ota_file(file_name, &buffer_nvram, &buf.ota_nvram_len);
-    if (result != WIFI_SUCCESS) {
-        memset(file_name, 0, FILE_NAME_LEN);
-        sprintf(file_name, "%s%s", OTA_PATH, OTA_NVRAM_FILE);
-        read_ota_file(file_name, &buffer_nvram, &buf.ota_nvram_len);
+    for (unsigned int i = 0; i < MAX_NV_FILE; i++) {
+        memset(nv_file_name[i], 0, FILE_NAME_LEN);
+    }
+    property_get(HW_DEV_PROP, prop_revision_buf, NULL);
+    property_get(HW_SKU_PROP, prop_sku_buf, NULL);
+
+    if (strcmp(prop_sku_buf, "G9S9B") == 0 ||
+        strcmp(prop_sku_buf, "G8V0U") == 0 ||
+        strcmp(prop_sku_buf, "GFQM1") == 0) {
+        strncpy(sku_name, "MMW", MAX_SKU_NAME_LEN);
+    } else if (strcmp(prop_sku_buf, "GR1YH") == 0 ||
+               strcmp(prop_sku_buf, "GF5KQ") == 0 ||
+               strcmp(prop_sku_buf, "GPQ72") == 0) {
+        strncpy(sku_name, "JPN", MAX_SKU_NAME_LEN);
+    } else if (strcmp(prop_sku_buf, "GB7N6") == 0 ||
+               strcmp(prop_sku_buf, "GLU0G") == 0 ||
+               strcmp(prop_sku_buf, "GNA8F") == 0) {
+        strncpy(sku_name, "ROW", MAX_SKU_NAME_LEN);
+    } else {
+        strncpy(sku_name, "NA", MAX_SKU_NAME_LEN);
+    }
+
+    sprintf(nv_file_name[0], "%s%s_%s_%s", OTA_PATH, OTA_NVRAM_FILE,
+            prop_revision_buf, sku_name);
+    sprintf(nv_file_name[1], "%s%s_%s", OTA_PATH, OTA_NVRAM_FILE,
+            sku_name);
+    sprintf(nv_file_name[2], "%s%s_%s", OTA_PATH, OTA_NVRAM_FILE,
+            prop_revision_buf);
+    sprintf(nv_file_name[3], "%s%s", OTA_PATH, OTA_NVRAM_FILE);
+
+    for (unsigned int i = 0; i < MAX_NV_FILE; i++) {
+        result = read_ota_file(nv_file_name[i], &buffer_nvram,
+                    &buf.ota_nvram_len);
+        if (result == WIFI_SUCCESS) {
+            ALOGE("[OTA] PATH NVRAM %s", nv_file_name[i]);
+            break;
+        }
     }
     if (buffer_nvram == NULL) {
         ALOGE("buffer_nvram is null");
         goto exit;
     }
 
-    ALOGE("[OTA] PATH NVRAM %s", file_name);
     buf.ota_nvram_buf[0] = buffer_nvram;
     cmd->otaDownload(&buf, ota_version);
 
