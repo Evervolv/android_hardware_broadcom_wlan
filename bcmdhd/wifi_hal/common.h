@@ -175,6 +175,7 @@ typedef enum {
     WIFI_SUBCMD_SET_LATENCY_MODE,                        /* 0x101b */
     WIFI_SUBCMD_SET_MULTISTA_PRIMARY_CONNECTION,         /* 0x101c */
     WIFI_SUBCMD_SET_MULTISTA_USE_CASE,                   /* 0x101d */
+    WIFI_SUBCMD_SET_DTIM_CONFIG,                         /* 0x101e */
 
     GSCAN_SUBCMD_MAX,
 
@@ -442,6 +443,7 @@ wifi_error wifi_virtual_interface_delete(wifi_handle handle, const char* ifname)
 wifi_error wifi_set_coex_unsafe_channels(wifi_handle handle, u32 num_channels,
                                          wifi_coex_unsafe_channel channels[], u32 restrictions);
 wifi_error wifi_set_voip_mode(wifi_interface_handle handle, wifi_voip_mode mode);
+wifi_error wifi_set_dtim_config(wifi_interface_handle handle, u32 multiplier);
 void set_hautil_mode(bool halutil_mode);
 bool get_halutil_mode();
 
