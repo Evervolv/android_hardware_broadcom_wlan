@@ -119,17 +119,21 @@ typedef enum {
     ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_START =    0x2100,
     ANDROID_NL80211_SUBCMD_CHAVOID_RANGE_END   =    0x211F,
 
-    /* define all TWT related commands between 0x2140 and 0x214F */
-    ANDROID_NL80211_SUBCMD_TWT_START =              0x2140,
-    ANDROID_NL80211_SUBCMD_TWT_END =                0x214F,
+    /* define all OTA Download related commands between 0x2120 and 0x212F */
+    ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_START	= 0x2120,
+    ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_END	= 0x212F,
 
     /* define all VOIP mode config related commands between 0x2130 and 0x213F */
     ANDROID_NL80211_SUBCMD_VIOP_MODE_START =	    0x2130,
     ANDROID_NL80211_SUBCMD_VIOP_MODE_END =	    0x213F,
 
-    /* define all OTA Download related commands between 0x2120 and 0x212F */
-    ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_START	= 0x2120,
-    ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_END	= 0x212F,
+    /* define all TWT related commands between 0x2140 and 0x214F */
+    ANDROID_NL80211_SUBCMD_TWT_START =              0x2140,
+    ANDROID_NL80211_SUBCMD_TWT_END =                0x214F,
+
+    /* define all Usable Channel related commands between 0x2150 and 0x215F */
+    ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_START =   0x2150,
+    ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_END =     0x215F,
 
     /* This is reserved for future usage */
 
@@ -219,6 +223,8 @@ typedef enum {
 
     WIFI_SUBCMD_GET_OTA_CURRUNT_INFO = ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_START,
     WIFI_SUBCMD_OTA_UPDATE,
+    WIFI_SUBCMD_USABLE_CHANNEL = ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_START,
+
 } WIFI_SUB_COMMAND;
 
 typedef enum {

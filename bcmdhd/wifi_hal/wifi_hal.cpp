@@ -91,6 +91,8 @@ static wifi_error wifi_read_packet_filter(wifi_interface_handle handle, u32 src_
 static wifi_error wifi_get_packet_filter_capabilities(wifi_interface_handle handle,
                 u32 *version, u32 *max_len);
 static wifi_error wifi_configure_nd_offload(wifi_interface_handle iface, u8 enable);
+static wifi_error wifi_get_usable_channels(wifi_handle handle, u32 band_mask, u32 iface_mode_mask,
+		u32 filter_mask, u32 max_size, u32* size, wifi_usable_channel* channels);
 
 static void wifi_cleanup_dynamic_ifaces(wifi_handle handle);
 typedef enum wifi_attr {
@@ -159,6 +161,17 @@ enum wifi_chavoid_attr {
     CHAVOID_ATTRIBUTE_MANDATORY = 6,
     /* Add more attributes here */
     CHAVOID_ATTRIBUTE_MAX
+};
+
+enum wifi_usable_channel_attributes {
+    USABLECHAN_ATTRIBUTE_INVALID    = 0,
+    USABLECHAN_ATTRIBUTE_BAND       = 1,
+    USABLECHAN_ATTRIBUTE_IFACE      = 2,
+    USABLECHAN_ATTRIBUTE_FILTER     = 3,
+    USABLECHAN_ATTRIBUTE_MAX_SIZE   = 4,
+    USABLECHAN_ATTRIBUTE_SIZE       = 5,
+    USABLECHAN_ATTRIBUTE_CHANNELS   = 6,
+    USABLECHAN_ATTRIBUTE_MAX
 };
 
 enum wifi_multista_attr {
@@ -315,6 +328,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_multi_sta_set_use_case = wifi_multi_sta_set_use_case;
     fn->wifi_set_voip_mode = wifi_set_voip_mode;
     fn->wifi_set_dtim_config = wifi_set_dtim_config;
+    fn->wifi_get_usable_channels = wifi_get_usable_channels;
 
     return WIFI_SUCCESS;
 }
@@ -2707,4 +2721,137 @@ wifi_error wifi_set_dtim_config(wifi_interface_handle handle, u32 multiplier)
     ALOGD("Setting DTIM config , halHandle = %p Multiplier = %d\n", handle, multiplier);
     SetDtimConfigCommand command(handle, multiplier);
     return (wifi_error) command.requestResponse();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+class UsableChannelCommand : public WifiCommand {
+
+private:
+    u32 mBandMask;
+    u32 mIfaceModeMask;
+    u32 mFilterMask;
+    u32 mMaxSize;
+    u32* mSize;
+    wifi_usable_channel* mChannels;
+
+public:
+    UsableChannelCommand(wifi_interface_handle handle, u32 band_mask, u32 iface_mode_mask,
+                   u32 filter_mask, u32 max_size, u32* size, wifi_usable_channel* channels)
+        : WifiCommand("UsableChannelCommand", handle, 0),
+                       mBandMask(band_mask), mIfaceModeMask(iface_mode_mask),
+                       mFilterMask(filter_mask), mMaxSize(max_size),
+		       mSize(size), mChannels(channels)
+    {
+    }
+
+    int createRequest(WifiRequest& request) {
+        createUsableChannelRequest(request);
+        return WIFI_SUCCESS;
+    }
+
+    int createUsableChannelRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_USABLE_CHANNEL);
+        if (result < 0) {
+            ALOGE("Failed to create UsableChannel request; result = %d", result);
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+
+        result = request.put_u32(USABLECHAN_ATTRIBUTE_BAND, mBandMask);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to put log level; result = %d", result);
+            return result;
+        }
+        result = request.put_u32(USABLECHAN_ATTRIBUTE_IFACE, mIfaceModeMask);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to put ring flags; result = %d", result);
+            return result;
+        }
+        result = request.put_u32(USABLECHAN_ATTRIBUTE_FILTER, mFilterMask);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to put usablechan filter; result = %d", result);
+            return result;
+        }
+        result = request.put_u32(USABLECHAN_ATTRIBUTE_MAX_SIZE, mMaxSize);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to put usablechan max_size; result = %d", result);
+            return result;
+        }
+        request.attr_end(data);
+
+        return WIFI_SUCCESS;
+    }
+
+    int start() {
+        WifiRequest request(familyId(), ifaceId());
+        int result = createRequest(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to create request; result = %d", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("failed to set scanning mac OUI; result = %d", result);
+        }
+
+        return result;
+    }
+
+    virtual int handleResponse(WifiEvent& reply) {
+        ALOGD("In DebugCommand::handleResponse");
+
+        if (reply.get_cmd() != NL80211_CMD_VENDOR) {
+            ALOGD("Ignoring reply with cmd = %d", reply.get_cmd());
+            return NL_SKIP;
+        }
+
+        nlattr *vendor_data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
+        int len = reply.get_vendor_data_len();
+        wifi_usable_channel *channels(mChannels);
+
+        if (vendor_data == NULL || len == 0) {
+            ALOGE("No Debug data found");
+            return NL_SKIP;
+        }
+
+        nl_iterator it(vendor_data);
+        if (it.get_type() == USABLECHAN_ATTRIBUTE_SIZE) {
+            *mSize = it.get_u32();
+        } else {
+            ALOGE("Unknown attribute: %d expecting %d",
+                it.get_type(), USABLECHAN_ATTRIBUTE_SIZE);
+            return NL_SKIP;
+        }
+
+        it.next();
+        if (it.get_type() == USABLECHAN_ATTRIBUTE_CHANNELS) {
+            memcpy(channels, it.get_data(), sizeof(wifi_usable_channel) * *mSize);
+        } else {
+            ALOGE("Unknown attribute: %d expecting %d",
+                it.get_type(), USABLECHAN_ATTRIBUTE_SIZE);
+            return NL_SKIP;
+        }
+
+        return NL_OK;
+    }
+
+    virtual int handleEvent(WifiEvent& event) {
+        /* NO events! */
+        return NL_SKIP;
+    }
+};
+
+wifi_error wifi_get_usable_channels(wifi_handle handle, u32 band_mask, u32 iface_mode_mask,
+		u32 filter_mask, u32 max_size, u32* size, wifi_usable_channel* channels)
+{
+    int numIfaceHandles = 0;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+    UsableChannelCommand command(wlan0Handle, band_mask, iface_mode_mask,
+                                    filter_mask, max_size, size, channels);
+    return (wifi_error)command.start();
 }
