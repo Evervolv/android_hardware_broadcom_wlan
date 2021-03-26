@@ -329,6 +329,7 @@ wifi_error init_wifi_vendor_hal_func_table(wifi_hal_fn *fn)
     fn->wifi_set_voip_mode = wifi_set_voip_mode;
     fn->wifi_set_dtim_config = wifi_set_dtim_config;
     fn->wifi_get_usable_channels = wifi_get_usable_channels;
+    fn->wifi_trigger_subsystem_restart = wifi_trigger_subsystem_restart;
 
     return WIFI_SUCCESS;
 }

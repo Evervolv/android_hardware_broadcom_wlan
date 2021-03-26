@@ -135,6 +135,10 @@ typedef enum {
     ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_START =   0x2150,
     ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_END =     0x215F,
 
+    /* define all init/deinit related commands between 0x2160 and 0x216F */
+    ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_START = 0x2160,
+    ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_END   = 0x216F,
+
     /* This is reserved for future usage */
 
 } ANDROID_VENDOR_SUB_COMMAND;
@@ -224,6 +228,7 @@ typedef enum {
     WIFI_SUBCMD_GET_OTA_CURRUNT_INFO = ANDROID_NL80211_SUBCMD_OTA_DOWNLOAD_START,
     WIFI_SUBCMD_OTA_UPDATE,
     WIFI_SUBCMD_USABLE_CHANNEL = ANDROID_NL80211_SUBCMD_USABLE_CHANNEL_START,
+    WIFI_SUBCMD_TRIGGER_SSR = ANDROID_NL80211_SUBCMD_INIT_DEINIT_RANGE_START,
 
 } WIFI_SUB_COMMAND;
 
@@ -323,6 +328,7 @@ typedef struct {
     interface_info **interfaces;                    // array of interfaces
     int num_interfaces;                             // number of interfaces
     int max_num_interfaces;                         // max number of interfaces
+    wifi_subsystem_restart_handler restart_handler; // trigger sub system handler
 
 
     // add other details
@@ -516,6 +522,7 @@ wifi_error twt_get_stats(wifi_interface_handle iface, u8 config_id, TwtStats* st
  */
 wifi_error twt_clear_stats(wifi_interface_handle iface, u8 config_id);
 
+wifi_error wifi_trigger_subsystem_restart(wifi_handle handle);
 // some common macros
 
 #define min(x, y)       ((x) < (y) ? (x) : (y))

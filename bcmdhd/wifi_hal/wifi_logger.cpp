@@ -26,6 +26,7 @@
 #include <netpacket/packet.h>
 #include <linux/filter.h>
 #include <linux/errqueue.h>
+#include <errno.h>
 
 #include <linux/pkt_sched.h>
 #include <netlink/object-api.h>
@@ -47,6 +48,7 @@
 #include "wifi_hal.h"
 #include "common.h"
 #include "cpp_bindings.h"
+#include <sys/stat.h>
 #include "brcm_version.h"
 #define WIFI_HAL_EVENT_SOCK_PORT     645
 
@@ -989,6 +991,54 @@ public:
 };
 
 ///////////////////////////////////////////////////////////////////////////////
+class SubSystemRestart : public WifiCommand
+{
+    public:
+    SubSystemRestart(wifi_interface_handle iface)
+        : WifiCommand("SubSystemRestart", iface, 0)
+    { }
+
+    int createRequest(WifiRequest& request) {
+        int result = request.create(GOOGLE_OUI, WIFI_SUBCMD_TRIGGER_SSR);
+        if (result < 0) {
+            return result;
+        }
+
+        nlattr *data = request.attr_start(NL80211_ATTR_VENDOR_DATA);
+
+        request.attr_end(data);
+        return WIFI_SUCCESS;
+    }
+
+    int create() {
+        WifiRequest request(familyId(), ifaceId());
+
+        int result = createRequest(request);
+        if (result < 0) {
+            ALOGE("Failed to create ssr request result = %d\n", result);
+            return result;
+        }
+
+        result = requestResponse(request);
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to register ssr response; result = %d\n", result);
+        }
+        return result;
+    }
+
+    protected:
+    int handleResponse(WifiEvent& reply) {
+        /* Nothing to do on response! */
+        return NL_OK;
+    }
+
+    int handleEvent(WifiEvent& event) {
+        /* NO events to handle here! */
+        return NL_SKIP;
+    }
+
+};
+///////////////////////////////////////////////////////////////////////////////
 class HalInit : public WifiCommand
 {
     int mErrCode;
@@ -1132,6 +1182,14 @@ wifi_error wifi_stop_hal(wifi_interface_handle iface)
 wifi_error wifi_set_subsystem_restart_handler(wifi_handle handle,
                                               wifi_subsystem_restart_handler handler)
 {
+    hal_info *info = NULL;
+
+    info = (hal_info *)handle;
+    if (info == NULL) {
+        ALOGE("Could not find hal info\n");
+        return WIFI_ERROR_UNKNOWN;
+    }
+
     SetRestartHandler *cmd = new SetRestartHandler(handle, HAL_RESTART_ID, handler);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
     wifi_error result = wifi_register_cmd(handle, HAL_RESTART_ID, cmd);
@@ -1139,15 +1197,61 @@ wifi_error wifi_set_subsystem_restart_handler(wifi_handle handle,
         cmd->releaseRef();
         return result;
     }
+
     result = (wifi_error)cmd->start();
     if (result != WIFI_SUCCESS) {
         wifi_unregister_cmd(handle, HAL_RESTART_ID);
         cmd->releaseRef();
         return result;
     }
+
+    /* Cache the handler to use it for trigger subsystem restart */
+    info->restart_handler = handler;
     return result;
 }
 
+wifi_error wifi_trigger_subsystem_restart(wifi_handle handle)
+{
+    wifi_error result = WIFI_SUCCESS;
+    hal_info *info = NULL;
+    char error_str[20];
+    SubSystemRestart *cmd = NULL;
+    wifi_interface_handle *ifaceHandles = NULL;
+    wifi_interface_handle wlan0Handle;
+    int numIfaceHandles = 0;
+
+    info = (hal_info *)handle;
+    if (handle == NULL || info == NULL) {
+        ALOGE("Could not find hal info\n");
+        result = WIFI_ERROR_UNKNOWN;
+        goto exit;
+    }
+
+    ALOGI("Trigger subsystem restart\n");
+
+    wlan0Handle = wifi_get_wlan_interface((wifi_handle)handle, ifaceHandles, numIfaceHandles);
+
+    cmd = new SubSystemRestart(wlan0Handle);
+    NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
+
+    result = (wifi_error)cmd->create();
+    if (result != WIFI_SUCCESS) {
+        cmd->releaseRef();
+        strncpy(error_str, "WIFI_ERROR_UNKNOWN", sizeof(error_str));
+        goto exit;
+    }
+
+    strncpy(error_str, "WIFI_SUCCESS", sizeof(error_str));
+
+exit:
+    if (info->restart_handler.on_subsystem_restart) {
+        (info->restart_handler.on_subsystem_restart)(error_str);
+    } else {
+        ALOGW("No trigger ssr handler registered");
+    }
+
+    return result;
+}
 
 wifi_error wifi_set_alert_handler(wifi_request_id id, wifi_interface_handle iface,
         wifi_alert_handler handler)
