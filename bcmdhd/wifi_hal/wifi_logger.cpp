@@ -948,7 +948,7 @@ public:
 
         /* unregister alert handler */
         unregisterVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
-        wifi_unregister_cmd(wifiHandle(), 0);
+        wifi_unregister_cmd(wifiHandle(), id());
         ALOGD("Success to clear restarthandler");
         return WIFI_SUCCESS;
     }
