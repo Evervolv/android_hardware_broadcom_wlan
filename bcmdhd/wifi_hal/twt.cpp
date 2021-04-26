@@ -59,6 +59,11 @@ twt_hal_info_t twt_info;
 #define TWT_HANDLE(twt_info)                  ((twt_info).twt_handle)
 #define GET_TWT_HANDLE(twt_info)              ((TwtHandle *)twt_info.twt_handle)
 
+#define WL_TWT_CAP_FLAGS_REQ_SUPPORT    (1u << 0u)
+#define WL_TWT_CAP_FLAGS_RESP_SUPPORT   (1u << 1u)
+#define WL_TWT_CAP_FLAGS_BTWT_SUPPORT   (1u << 2u)
+#define WL_TWT_CAP_FLAGS_FLEX_SUPPORT   (1u << 3u)
+
 class TwtHandle
 {
     public:
@@ -335,6 +340,16 @@ public:
         return ret;
     }
 
+private:
+    TwtCapability parseTwtCap(uint32_t twt_peer_cap) {
+        TwtCapability cap;
+        cap.requester_supported = (twt_peer_cap & WL_TWT_CAP_FLAGS_REQ_SUPPORT) ? 1 : 0;
+        cap.responder_supported = (twt_peer_cap & WL_TWT_CAP_FLAGS_RESP_SUPPORT) ? 1 : 0;
+        cap.broadcast_twt_supported = (twt_peer_cap & WL_TWT_CAP_FLAGS_BTWT_SUPPORT) ? 1 : 0;
+        cap.flexibile_twt_supported = (twt_peer_cap & WL_TWT_CAP_FLAGS_FLEX_SUPPORT) ? 1 : 0;
+        return cap;
+    }
+
 protected:
     virtual int handleResponse(WifiEvent& reply) {
 
@@ -347,14 +362,33 @@ protected:
 
         int id = reply.get_vendor_id();
         int subcmd = reply.get_vendor_subcmd();
+        uint32_t twt_device_cap, twt_peer_cap;
 
-        void *data = reply.get_vendor_data();
+        nlattr *data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
         int len = reply.get_vendor_data_len();
 
-        ALOGD("Id = %0x, subcmd = %d, len = %d, expected len = %d", id, subcmd, len,
-                sizeof(*mCapabilities));
+        ALOGD("Id = %0x, subcmd = %d, len = %d, expected len = %d", id, subcmd, len);
+        if (data == NULL || len == 0) {
+            ALOGE("no vendor data in GetTwtCapabilitiesCommand response; ignoring it\n");
+            return NL_SKIP;
+        }
 
-        memcpy(mCapabilities, data, min(len, (int) sizeof(*mCapabilities)));
+        for (nl_iterator it(data); it.has_next(); it.next()) {
+            switch (it.get_type()) {
+                case TWT_ATTRIBUTE_DEVICE_CAP:
+                    twt_device_cap = it.get_u32();
+                    mCapabilities->device_capability = parseTwtCap(twt_device_cap);
+                    break;
+                case TWT_ATTRIBUTE_PEER_CAP:
+                    twt_peer_cap = it.get_u32();
+                    mCapabilities->peer_capability = parseTwtCap(twt_peer_cap);
+                    break;
+                default:
+                    ALOGE("Ignoring invalid attribute type = %d, size = %d\n",
+                            it.get_type(), it.get_len());
+                    break;
+            }
+        }
 
         ALOGE("Out GetTwtCapabilitiesCommand::handleResponse\n");
         return NL_OK;
