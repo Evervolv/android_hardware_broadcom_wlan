@@ -460,13 +460,47 @@ protected:
         int id = reply.get_vendor_id();
         int subcmd = reply.get_vendor_subcmd();
 
-        void *data = reply.get_vendor_data();
+        nlattr *data = reply.get_attribute(NL80211_ATTR_VENDOR_DATA);
         int len = reply.get_vendor_data_len();
 
-        ALOGD("Id = %0x, subcmd = %d, len = %d, expected len = %d", id, subcmd, len,
-                sizeof(*mStats));
+        ALOGD("Id = %0x, subcmd = %d, len = %d, expected len = %d", id, subcmd, len);
+        if (data == NULL || len == 0) {
+            ALOGE("no vendor data in GetTwtStatsCommand response; ignoring it\n");
+            return NL_SKIP;
+        }
 
-        memcpy(mStats, data, min(len, (int) sizeof(*mStats)));
+        for (nl_iterator it(data); it.has_next(); it.next()) {
+            switch (it.get_type()) {
+                case TWT_ATTRIBUTE_CONFIG_ID:
+                    mStats->config_id = it.get_u8();
+                    break;
+                case TWT_ATTRIBUTE_AVG_PKT_NUM_TX:
+                    mStats->avg_pkt_num_tx = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_AVG_PKT_NUM_RX:
+                    mStats->avg_pkt_num_rx = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_AVG_PKT_SIZE_TX:
+                    mStats->avg_tx_pkt_size = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_AVG_PKT_SIZE_RX:
+                    mStats->avg_rx_pkt_size = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_AVG_EOSP_DUR:
+                    mStats->avg_eosp_dur_us = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_EOSP_COUNT:
+                    mStats->eosp_count = it.get_u32();
+                    break;
+                case TWT_ATTRIBUTE_NUM_SP:
+                    mStats->num_sp = it.get_u32();
+                    break;
+                default:
+                    ALOGE("Ignoring invalid attribute type = %d, size = %d\n",
+                            it.get_type(), it.get_len());
+                    break;
+            }
+        }
 
         return NL_OK;
     }
