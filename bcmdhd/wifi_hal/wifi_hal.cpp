@@ -2605,13 +2605,20 @@ protected:
 wifi_error wifi_multi_sta_set_primary_connection(wifi_handle handle, wifi_interface_handle iface)
 {
     wifi_error ret = WIFI_SUCCESS;
+    char buf[IFNAMSIZ];
 
     if (!handle || !iface) {
         ALOGE("%s: Error wifi_handle NULL or invalid wifi interface handle\n", __FUNCTION__);
         return WIFI_ERROR_UNKNOWN;
     }
 
-    ALOGD("Setting Multista primary connection = %p\n", iface);
+    if (wifi_get_iface_name(iface, buf, sizeof(buf)) != WIFI_SUCCESS) {
+        ALOGE("%s : Invalid interface handle\n", __func__);
+        return WIFI_ERROR_INVALID_ARGS;
+    }
+
+    ALOGD("Setting Multista primary connection for iface = %s\n", buf);
+
     MultiStaConfig *cmd = new MultiStaConfig(iface);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
     ret = (wifi_error)cmd->start();
