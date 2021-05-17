@@ -286,7 +286,9 @@ typedef enum {
     NAN_ATTRIBUTE_DISCOVERY_BEACON_INTERVAL         = 224,
     NAN_ATTRIBUTE_NSS                               = 225,
     NAN_ATTRIBUTE_ENABLE_RANGING                    = 226,
-    NAN_ATTRIBUTE_DW_EARLY_TERM                     = 227
+    NAN_ATTRIBUTE_DW_EARLY_TERM                     = 227,
+    NAN_ATTRIBUTE_CHANNEL_INFO                      = 228,
+    NAN_ATTRIBUTE_NUM_CHANNELS                      = 229
 } NAN_ATTRIBUTE;
 
 typedef enum {
@@ -2339,6 +2341,7 @@ class NanDataPathPrimitive : public WifiCommand
                 NanDataPathConfirmInd ndp_create_confirmation_event;
                 memset(&ndp_create_confirmation_event, 0, sizeof(NanDataPathConfirmInd));
                 u16 ndp_conf_app_info_len = 0;
+                u8 chan_idx = 0;
                 counters.dp_confirm_evt++;
                 ALOGI("Received NAN_EVENT_DATA_CONFIRMATION\n");
 
@@ -2375,9 +2378,29 @@ class NanDataPathPrimitive : public WifiCommand
                         ALOGI("reason code %u", (NanDataPathResponseCode)it.get_u8());
                         ndp_create_confirmation_event.rsp_code =
                             (NanDataPathResponseCode)it.get_u8();
+                    } else if (attr_type == NAN_ATTRIBUTE_NUM_CHANNELS) {
+                        ALOGI("num channels %u", it.get_u32());
+                        if (it.get_u32() <= NAN_MAX_CHANNEL_INFO_SUPPORTED) {
+                            ndp_create_confirmation_event.num_channels = it.get_u32();
+                        } else {
+                            ndp_create_confirmation_event.num_channels =
+                                NAN_MAX_CHANNEL_INFO_SUPPORTED;
+                            ALOGE("num channels reset to max allowed %u",
+                                ndp_create_confirmation_event.num_channels);
+                        }
+                    } else if (attr_type == NAN_ATTRIBUTE_CHANNEL_INFO) {
+                        ALOGI("Channel info \n");
+                        memcpy((u8 *)ndp_create_confirmation_event.channel_info, it.get_data(),
+                            ndp_create_confirmation_event.num_channels * sizeof(NanChannelInfo));
+                        while (chan_idx < ndp_create_confirmation_event.num_channels) {
+                            ALOGI("channel: %u, Bandwidth: %u, nss: %u\n",
+                                ndp_create_confirmation_event.channel_info[chan_idx].channel,
+                                ndp_create_confirmation_event.channel_info[chan_idx].bandwidth,
+                                ndp_create_confirmation_event.channel_info[chan_idx].nss);
+                            chan_idx++;
+                        }
                     }
                 }
-
                 GET_NAN_HANDLE(info)->mHandlers.EventDataConfirm(&ndp_create_confirmation_event);
                 break;
             }
