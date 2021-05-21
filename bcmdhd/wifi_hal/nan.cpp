@@ -1525,9 +1525,10 @@ class NanDiscEnginePrimitive : public WifiCommand
                         pub_term_event.reason = (NanStatusType)it.get_u8();
                         ALOGI("pub termination status %u", pub_term_event.reason);
                     } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                        memcpy(pub_term_event.nan_reason, it.get_data(),
-                                sizeof(pub_term_event.nan_reason));
-                        ALOGI("pub termination reason: %s", pub_term_event.nan_reason);
+                        u8 len = min(it.get_len(), sizeof(pub_term_event.nan_reason));
+                        memcpy(pub_term_event.nan_reason, it.get_data(), len);
+                        ALOGI("pub termination reason: %s, len = %d\n",
+                            pub_term_event.nan_reason, len);
                     } else {
                         ALOGE("Unknown attr: %u\n", attr_type);
                     }
@@ -1647,9 +1648,10 @@ class NanDiscEnginePrimitive : public WifiCommand
                         sub_term_event.reason = (NanStatusType)it.get_u16();
                         ALOGI("sub termination status %u", sub_term_event.reason);
                     } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                        memcpy(sub_term_event.nan_reason, it.get_data(),
-                                sizeof(sub_term_event.nan_reason));
-                        ALOGI("sub termination reason: %s", sub_term_event.nan_reason);
+                        u8 len = min(it.get_len(), sizeof(sub_term_event.nan_reason));
+                        memcpy(sub_term_event.nan_reason, it.get_data(), len);
+                        ALOGI("sub termination nan reason: %s, len = %d\n",
+                            sub_term_event.nan_reason, len);
                     } else {
                         ALOGI("Unknown attr: %d\n", attr_type);
                     }
@@ -1698,9 +1700,10 @@ class NanDiscEnginePrimitive : public WifiCommand
                     } else if (attr_type == NAN_ATTRIBUTE_STATUS) {
                         followup_ind.reason = (NanStatusType)it.get_u8();
                     } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                        memcpy(followup_ind.nan_reason, it.get_data(),
-                                sizeof(followup_ind.nan_reason));
-                        ALOGI("nan transmit followup ind: reason: %s", followup_ind.nan_reason);
+                        u8 len = min(it.get_len(), sizeof(followup_ind.nan_reason));
+                        memcpy(followup_ind.nan_reason, it.get_data(), len);
+                        ALOGI("nan transmit followup ind: reason: %s, len = %d\n",
+                            followup_ind.nan_reason, len);
                     }
                 }
                 GET_NAN_HANDLE(info)->mHandlers.EventTransmitFollowup(&followup_ind);
@@ -3390,9 +3393,10 @@ class NanMacControl : public WifiCommand
                         disabled_ind.reason = (NanStatusType)it.get_u8();
                         ALOGI("Nan Disable:status %u", disabled_ind.reason);
                     } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                        memcpy(disabled_ind.nan_reason, it.get_data(),
-                                sizeof(disabled_ind.nan_reason));
-                        ALOGI("Disable nan reason: %s", disabled_ind.nan_reason);
+                        u8 len = min(it.get_len(), sizeof(disabled_ind.nan_reason));
+                        memcpy(disabled_ind.nan_reason, it.get_data(), len);
+                        ALOGI("Disabled nan reason: %s, len = %d\n",
+                            disabled_ind.nan_reason, len);
                     }
                 }
 
@@ -4592,9 +4596,10 @@ class NanEventCap : public WifiCommand
                             disabled_ind.reason = (NanStatusType)it.get_u8();
                             ALOGI("Nan Disable:status %u", disabled_ind.reason);
                         } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                            memcpy(disabled_ind.nan_reason, it.get_data(),
-                                    sizeof(disabled_ind.nan_reason));
-                            ALOGI("nan disable reason: %s", disabled_ind.nan_reason);
+                            u8 len = min(it.get_len(), sizeof(disabled_ind.nan_reason));
+                            memcpy(disabled_ind.nan_reason, it.get_data(), len);
+                            ALOGI("nan disabled reason: %s, len = %d\n",
+                                disabled_ind.nan_reason, len);
                         }
                     }
 
@@ -4617,9 +4622,10 @@ class NanEventCap : public WifiCommand
                             pub_term_event.reason = (NanStatusType)it.get_u8();
                             ALOGI("pub termination status %u", pub_term_event.reason);
                         } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                            memcpy(pub_term_event.nan_reason, it.get_data(),
-                                    sizeof(pub_term_event.nan_reason));
-                            ALOGI("Pub termination nan reason: %s", pub_term_event.nan_reason);
+                            u8 len = min(it.get_len(), sizeof(pub_term_event.nan_reason));
+                            memcpy(pub_term_event.nan_reason, it.get_data(), len);
+                            ALOGI("Pub termination nan reason: %s, len = %d\n",
+                                pub_term_event.nan_reason, len);
                         } else {
                             ALOGE("Unknown attr\n");
                         }
@@ -4747,9 +4753,10 @@ class NanEventCap : public WifiCommand
                             sub_term_event.reason = (NanStatusType)it.get_u8();
                             ALOGI("sub termination status %u", sub_term_event.reason);
                         } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                            memcpy(sub_term_event.nan_reason, it.get_data(),
-                                    sizeof(sub_term_event.nan_reason));
-                            ALOGI("sub termination nan reason: %s", sub_term_event.nan_reason);
+                            u8 len = min(it.get_len(), sizeof(sub_term_event.nan_reason));
+                            memcpy(sub_term_event.nan_reason, it.get_data(), len);
+                            ALOGI("sub termination nan reason: %s, len = %d\n",
+                                sub_term_event.nan_reason, len);
                         } else {
                             ALOGE("Unknown attr: %u\n", attr_type);
                         }
@@ -4986,9 +4993,10 @@ class NanEventCap : public WifiCommand
                         } else if (attr_type == NAN_ATTRIBUTE_STATUS) {
                             followup_ind.reason = (NanStatusType)it.get_u8();
                         } else if (attr_type == NAN_ATTRIBUTE_REASON) {
-                            memcpy(followup_ind.nan_reason, it.get_data(),
-                                    sizeof(followup_ind.nan_reason));
-                            ALOGI("nan transmit followup ind: reason: %s", followup_ind.nan_reason);
+                            u8 len = min(it.get_len(), sizeof(followup_ind.nan_reason));
+                            memcpy(followup_ind.nan_reason, it.get_data(), len);
+                            ALOGI("nan transmit followup ind: reason: %s, len = %d\n",
+                               followup_ind.nan_reason, len);
                         }
                     }
 
