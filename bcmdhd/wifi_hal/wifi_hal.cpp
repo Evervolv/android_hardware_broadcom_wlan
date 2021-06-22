@@ -1085,27 +1085,27 @@ public:
     int start() {
         WifiRequest request(familyId(), ifaceId());
         int result = createRequest(request, 1);
-        if (result < 0) {
+        if (result != WIFI_SUCCESS) {
+            ALOGE("Failed to create request; result = %d", result);
             return result;
         }
+
+        registerVendorHandler(GOOGLE_OUI, GOOGLE_RSSI_MONITOR_EVENT);
+        ALOGI("Register GOOGLE_RSSI_MONITOR_EVENT handler");
+
         result = requestResponse(request);
-        if (result < 0) {
-            ALOGI("Failed to set RSSI Monitor, result = %d", result);
-            return result;
-        }
-        ALOGI("Successfully set RSSI monitoring");
-        result = registerVendorHandler(GOOGLE_OUI, GOOGLE_RSSI_MONITOR_EVENT);
-
-
-        if (result < 0) {
+        if (result != WIFI_SUCCESS) {
             unregisterVendorHandler(GOOGLE_OUI, GOOGLE_RSSI_MONITOR_EVENT);
+            ALOGE("Failed to set RSSI Monitor, result = %d", result);
             return result;
         }
-        ALOGI("Done!");
+
+        ALOGI("Successfully set RSSI monitoring");
         return result;
     }
 
     virtual int cancel() {
+        unregisterVendorHandler(GOOGLE_OUI, GOOGLE_RSSI_MONITOR_EVENT);
 
         WifiRequest request(familyId(), ifaceId());
         int result = createRequest(request, 0);
@@ -1117,7 +1117,6 @@ public:
                 ALOGE("failed to stop RSSI monitoring = %d", result);
             }
         }
-        unregisterVendorHandler(GOOGLE_OUI, GOOGLE_RSSI_MONITOR_EVENT);
         return WIFI_SUCCESS;
     }
 
@@ -1768,7 +1767,7 @@ wifi_error wifi_set_country_code(wifi_interface_handle handle, const char *count
 static wifi_error wifi_start_rssi_monitoring(wifi_request_id id, wifi_interface_handle
                         iface, s8 max_rssi, s8 min_rssi, wifi_rssi_event_handler eh)
 {
-    ALOGD("Start RSSI monitor %d", id);
+    ALOGI("Starting RSSI monitor %d", id);
     wifi_handle handle = getWifiHandle(iface);
     SetRSSIMonitorCommand *cmd = new SetRSSIMonitorCommand(id, iface, max_rssi, min_rssi, eh);
     NULL_CHECK_RETURN(cmd, "memory allocation failure", WIFI_ERROR_OUT_OF_MEMORY);
@@ -1788,7 +1787,7 @@ static wifi_error wifi_start_rssi_monitoring(wifi_request_id id, wifi_interface_
 
 static wifi_error wifi_stop_rssi_monitoring(wifi_request_id id, wifi_interface_handle iface)
 {
-    ALOGD("Stopping RSSI monitor");
+    ALOGI("Stopping RSSI monitor %d", id);
 
     if(id == -1) {
         wifi_rssi_event_handler handler;
