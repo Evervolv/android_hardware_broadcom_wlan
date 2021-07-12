@@ -635,26 +635,12 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
         ALOGE("Not cleaning up hal as global_iface is NULL");
     }
 
+    info->clean_up = true;
+
     if (TEMP_FAILURE_RETRY(write(info->cleanup_socks[0], "Exit", 4)) < 1) {
         // As a fallback set the cleanup flag to TRUE
         ALOGE("could not write to the cleanup socket");
-    } else {
-        // Listen to the response
-        // Hopefully we dont get errors or get hung up
-        // Not much can be done in that case, but assume that
-        // it has rx'ed the Exit message to exit the thread.
-        // As a fallback set the cleanup flag to TRUE
-        memset(buf, 0, sizeof(buf));
-        ssize_t result = TEMP_FAILURE_RETRY(read(info->cleanup_socks[0], buf, sizeof(buf)));
-        ALOGE("%s: Read after POLL returned %zd, error no = %d (%s)", __FUNCTION__,
-               result, errno, strerror(errno));
-        if (strncmp(buf, "Done", 4) == 0) {
-            ALOGE("Event processing terminated");
-        } else {
-            ALOGD("Rx'ed %s", buf);
-        }
     }
-    info->clean_up = true;
     /* calling internal modules or cleanup */
     wifi_internal_module_cleanup();
     pthread_mutex_lock(&info->cb_lock);
@@ -759,28 +745,16 @@ void wifi_event_loop(wifi_handle handle)
         } else if (pfd[0].revents & POLLHUP) {
             ALOGE("Remote side hung up");
             break;
-        } else if (pfd[0].revents & POLLIN) {
+        } else if (pfd[0].revents & POLLIN && !info->clean_up) {
             // ALOGI("Found some events!!!");
             internal_pollin_handler(handle);
         } else if (pfd[1].revents & POLLIN) {
-            memset(buf, 0, sizeof(buf));
-            ssize_t result2 = TEMP_FAILURE_RETRY(read(pfd[1].fd, buf, sizeof(buf)));
-            ALOGE("%s: Read after POLL returned %zd, error no = %d (%s)", __FUNCTION__,
-                   result2, errno, strerror(errno));
-            if (strncmp(buf, "Exit", 4) == 0) {
-                ALOGD("Got a signal to exit!!!");
-                if (TEMP_FAILURE_RETRY(write(pfd[1].fd, "Done", 4)) < 1) {
-                    ALOGE("could not write to the cleanup socket");
-                }
-                break;
-            } else {
-                ALOGD("Rx'ed %s on the cleanup socket\n", buf);
-            }
+            ALOGI("Got a signal to exit!!!");
         } else {
             ALOGE("Unknown event - %0x, %0x", pfd[0].revents, pfd[1].revents);
         }
     } while (!info->clean_up);
-    ALOGI("Exit %s", __FUNCTION__);
+    ALOGE("Exit %s", __FUNCTION__);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////
