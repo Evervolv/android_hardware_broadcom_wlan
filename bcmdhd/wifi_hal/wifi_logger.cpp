@@ -946,17 +946,17 @@ public:
         : WifiCommand("SetRestartHandler", handle, id), mHandler(handler), mBuff(NULL)
     { }
     int start() {
-        ALOGV("Start Restart Handler");
+        ALOGI("Start Restart Handler");
         registerVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
         return WIFI_SUCCESS;
     }
     virtual int cancel() {
-        ALOGV("Clear Restart Handler");
+        ALOGI("Clear Restart Handler");
 
         /* unregister alert handler */
         unregisterVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
         wifi_unregister_cmd(wifiHandle(), id());
-        ALOGD("Success to clear restarthandler");
+        ALOGI("Success to clear restarthandler");
         return WIFI_SUCCESS;
     }
 
@@ -980,7 +980,7 @@ public:
                 if (it.get_type() == LOGGER_ATTRIBUTE_HANG_REASON) {
                     mBuff = (char *)it.get_data();
                 } else {
-                    ALOGW("Ignoring invalid attribute type = %d, size = %d",
+                    ALOGI("Ignoring invalid attribute type = %d, size = %d",
                             it.get_type(), it.get_len());
                 }
             }
@@ -988,7 +988,7 @@ public:
             if (*mHandler.on_subsystem_restart) {
                 (*mHandler.on_subsystem_restart)(mBuff);
             } else {
-                ALOGW("No Restart handler registered");
+                ALOGI("No Restart handler registered");
             }
         }
         return NL_OK;
@@ -1211,6 +1211,7 @@ wifi_error wifi_set_subsystem_restart_handler(wifi_handle handle,
     }
 
     /* Cache the handler to use it for trigger subsystem restart */
+    ALOGI("Register SSR handler:%p", handler);
     info->restart_handler = handler;
     return result;
 }
@@ -1243,6 +1244,7 @@ wifi_error wifi_trigger_subsystem_restart(wifi_handle handle)
     if (result != WIFI_SUCCESS) {
         cmd->releaseRef();
         strncpy(error_str, "WIFI_ERROR_UNKNOWN", sizeof(error_str));
+        ALOGE("Failed to create SSR");
         goto exit;
     }
 
@@ -1250,9 +1252,11 @@ wifi_error wifi_trigger_subsystem_restart(wifi_handle handle)
 
 exit:
     if (info->restart_handler.on_subsystem_restart) {
+        ALOGI("Trigger ssr handler registered handler:%p",
+            info->restart_handler.on_subsystem_restart);
         (info->restart_handler.on_subsystem_restart)(error_str);
     } else {
-        ALOGW("No trigger ssr handler registered");
+        ALOGI("No trigger ssr handler registered");
     }
 
     return result;
