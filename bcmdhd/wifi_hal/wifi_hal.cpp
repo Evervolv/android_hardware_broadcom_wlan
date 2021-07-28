@@ -610,6 +610,11 @@ void wifi_internal_module_cleanup()
 
 void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
 {
+    if (!handle) {
+        ALOGE("Handle is null");
+        return;
+    }
+
     hal_info *info = getHalInfo(handle);
     char buf[64];
     wifi_error result;
@@ -635,12 +640,6 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
         ALOGE("Not cleaning up hal as global_iface is NULL");
     }
 
-    info->clean_up = true;
-
-    if (TEMP_FAILURE_RETRY(write(info->cleanup_socks[0], "Exit", 4)) < 1) {
-        // As a fallback set the cleanup flag to TRUE
-        ALOGE("could not write to the cleanup socket");
-    }
     /* calling internal modules or cleanup */
     wifi_internal_module_cleanup();
     pthread_mutex_lock(&info->cb_lock);
@@ -694,7 +693,13 @@ void wifi_cleanup(wifi_handle handle, wifi_cleaned_up_handler handler)
         wifi_cleanup_dynamic_ifaces(handle);
     }
     pthread_mutex_unlock(&info->cb_lock);
-    internal_cleaned_up_handler(handle);
+
+    info->clean_up = true;
+
+    if (TEMP_FAILURE_RETRY(write(info->cleanup_socks[0], "Exit", 4)) < 1) {
+        // As a fallback set the cleanup flag to TRUE
+        ALOGE("could not write to the cleanup socket");
+    }
     ALOGE("wifi_clean_up done");
 }
 
@@ -754,6 +759,8 @@ void wifi_event_loop(wifi_handle handle)
             ALOGE("Unknown event - %0x, %0x", pfd[0].revents, pfd[1].revents);
         }
     } while (!info->clean_up);
+
+    internal_cleaned_up_handler(handle);
     ALOGE("Exit %s", __FUNCTION__);
 }
 
