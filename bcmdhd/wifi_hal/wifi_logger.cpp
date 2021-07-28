@@ -1940,8 +1940,8 @@ wifi_error check_multiple_nvram_clm(uint32_t type, char* hw_revision, char* hw_s
     }
 
     sprintf(file_name[0], "%s_%s_%s", nvram_clmblob_default_file, hw_revision, hw_sku);
-    sprintf(file_name[1], "%s_%s", nvram_clmblob_default_file, hw_sku);
-    sprintf(file_name[2], "%s_%s", nvram_clmblob_default_file, hw_revision);
+    sprintf(file_name[1], "%s_%s", nvram_clmblob_default_file, hw_revision);
+    sprintf(file_name[2], "%s_%s", nvram_clmblob_default_file, hw_sku);
     sprintf(file_name[3], "%s", nvram_clmblob_default_file);
 
     for (unsigned int i = 0; i < MAX_NV_FILE; i++) {
