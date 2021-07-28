@@ -485,13 +485,13 @@ public:
             return result;
         }
 
+        registerVendorHandler(GOOGLE_OUI, RTT_EVENT_COMPLETE);
         result = requestResponse(request);
         if (result != WIFI_SUCCESS) {
             ALOGE("failed to configure RTT setup; result = %d", result);
             return result;
         }
 
-        registerVendorHandler(GOOGLE_OUI, RTT_EVENT_COMPLETE);
         ALOGI("Successfully started RTT operation");
         return result;
     }

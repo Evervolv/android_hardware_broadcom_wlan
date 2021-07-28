@@ -575,6 +575,10 @@ public:
             return result;
         }
 
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_SCAN_RESULTS_AVAILABLE);
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_COMPLETE_SCAN);
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_FULL_SCAN_RESULTS);
+
         result = requestResponse(request);
         if (result != WIFI_SUCCESS) {
             ALOGE("failed to configure setup; result = %d", result);
@@ -602,10 +606,6 @@ public:
             ALOGE("failed to create start request; result = %d", result);
             return result;
         }
-
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_SCAN_RESULTS_AVAILABLE);
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_COMPLETE_SCAN);
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_FULL_SCAN_RESULTS);
 
         result = requestResponse(request);
         if (result != WIFI_SUCCESS) {
@@ -1065,6 +1065,9 @@ public:
             return result;
         }
 
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_HOTLIST_RESULTS_FOUND);
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_HOTLIST_RESULTS_LOST);
+
         result = requestResponse(request);
         if (result < 0) {
             ALOGI("Failed to execute hotlist setup request, result = %d", result);
@@ -1078,9 +1081,6 @@ public:
         if (result < 0) {
             return result;
         }
-
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_HOTLIST_RESULTS_FOUND);
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_HOTLIST_RESULTS_LOST);
 
         result = requestResponse(request);
         if (result < 0) {
@@ -1285,6 +1285,7 @@ public:
             return result;
         }
 
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_EPNO_EVENT);
         result = requestResponse(request);
         if (result < 0) {
             ALOGI("Failed to execute ePNO setup request, result = %d", result);
@@ -1293,7 +1294,6 @@ public:
         }
 
         ALOGI("Successfully set %d SSIDs for ePNO", epno_params.num_networks);
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_EPNO_EVENT);
         ALOGI("successfully restarted the scan");
         return result;
     }
@@ -1492,6 +1492,8 @@ public:
             return result;
         }
 
+        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_SIGNIFICANT_CHANGE_RESULTS);
+
         result = requestResponse(request);
         if (result < 0) {
             ALOGI("failed to set significant wifi change config %d", result);
@@ -1504,8 +1506,6 @@ public:
         if (result < 0) {
             return result;
         }
-
-        registerVendorHandler(GOOGLE_OUI, GSCAN_EVENT_SIGNIFICANT_CHANGE_RESULTS);
 
         result = requestResponse(request);
         if (result < 0) {
