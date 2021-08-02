@@ -946,7 +946,7 @@ public:
         : WifiCommand("SetRestartHandler", handle, id), mHandler(handler), mBuff(NULL)
     { }
     int start() {
-        ALOGI("Start Restart Handler");
+        ALOGI("Start Restart Handler handler:%p", mHandler);
         registerVendorHandler(BRCM_OUI, BRCM_VENDOR_EVENT_HANGED);
         return WIFI_SUCCESS;
     }
@@ -987,6 +987,8 @@ public:
 
             if (*mHandler.on_subsystem_restart) {
                 (*mHandler.on_subsystem_restart)(mBuff);
+                ALOGI("Hang event received. Trigger SSR handler:%p",
+                    mHandler.on_subsystem_restart);
             } else {
                 ALOGI("No Restart handler registered");
             }
