@@ -66,6 +66,7 @@
 #define WIFI_HAL_CMD_SOCK_PORT       644
 #define WIFI_HAL_EVENT_SOCK_PORT     645
 #define MAX_VIRTUAL_IFACES           5
+#define WIFI_HAL_EVENT_BUFFER_NOT_AVAILABLE 105
 
 /*
  * Defines for wifi_wait_for_driver_ready()
@@ -747,6 +748,10 @@ void wifi_event_loop(wifi_handle handle)
             ssize_t result2 = TEMP_FAILURE_RETRY(read(pfd[0].fd, buf, sizeof(buf)));
             ALOGE("Read after POLL returned %zd, error no = %d (%s)", result2,
                   errno, strerror(errno));
+            if (errno == WIFI_HAL_EVENT_BUFFER_NOT_AVAILABLE) {
+                ALOGE("Exit, No buffer space");
+                break;
+            }
         } else if (pfd[0].revents & POLLHUP) {
             ALOGE("Remote side hung up");
             break;
