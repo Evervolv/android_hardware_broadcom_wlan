@@ -419,7 +419,7 @@ public:
     }
 
     int start() {
-        // ALOGD("Start debug command");
+        ALOGD("Start debug command");
         WifiRequest request(familyId(), ifaceId());
         int result = createRequest(request);
         if (result != WIFI_SUCCESS) {
@@ -435,7 +435,7 @@ public:
     }
 
     virtual int handleResponse(WifiEvent& reply) {
-        ALOGD("In DebugCommand::handleResponse");
+        ALOGD("In DebugCommand::handleResponse, mType:%d\n", mType);
 
         if (reply.get_cmd() != NL80211_CMD_VENDOR) {
             ALOGD("Ignoring reply with cmd = %d", reply.get_cmd());
@@ -490,9 +490,15 @@ public:
                 it.next();
                 for (unsigned int i = 0; it.has_next() && i < *mNumRings; it.next()) {
                     if (it.get_type() == LOGGER_ATTRIBUTE_RING_STATUS) {
-                        memcpy(status, it.get_data(), sizeof(wifi_ring_buffer_status));
-                        i++;
-                        status++;
+                        if (it.get_len() > sizeof(wifi_ring_buffer_status)) {
+                            ALOGE("ring status unexpected len = %d, dest len = %lu",
+                                it.get_len(), sizeof(wifi_ring_buffer_status));
+                            return NL_SKIP;
+                        } else {
+                            memcpy(status, it.get_data(), sizeof(wifi_ring_buffer_status));
+                            i++;
+                            status++;
+                        }
                     } else {
                         ALOGW("Ignoring invalid attribute type = %d, size = %d",
                                 it.get_type(), it.get_len());
@@ -699,16 +705,23 @@ public:
             return NL_SKIP;
         }
 
-        if(event_id == GOOGLE_DEBUG_RING_EVENT) {
+        if (event_id == GOOGLE_DEBUG_RING_EVENT) {
             wifi_ring_buffer_status status;
             memset(&status, 0, sizeof(status));
 
             for (nl_iterator it(vendor_data); it.has_next(); it.next()) {
                 if (it.get_type() == LOGGER_ATTRIBUTE_RING_STATUS) {
-                    memcpy(&status, it.get_data(), sizeof(status));
+                    if (it.get_len() > sizeof(wifi_ring_buffer_status)) {
+                        ALOGE("SetLogHandler: ring status unexpected len = %d, dest len = %lu",
+                           it.get_len(), sizeof(wifi_ring_buffer_status));
+                        return NL_SKIP;
+                    } else {
+                        memcpy(&status, it.get_data(), sizeof(wifi_ring_buffer_status));
+                    }
                 } else if (it.get_type() == LOGGER_ATTRIBUTE_RING_DATA) {
                     buffer_size = it.get_len();
                     buffer = (char *)it.get_data();
+                    ALOGV("SetLogHandler: ring data size = %d", buffer_size);
                 } else {
                     ALOGW("Ignoring invalid attribute type = %d, size = %d",
                             it.get_type(), it.get_len());
